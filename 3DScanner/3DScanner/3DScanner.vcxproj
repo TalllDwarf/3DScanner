@@ -109,6 +109,7 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>SDL/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -151,6 +152,7 @@ SDL2main.lib;glu32.lib;vcruntimed.lib;ucrtd.lib;%(AdditionalDependencies)</Addit
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <AdditionalIncludeDirectories>SDL/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -165,9 +167,17 @@ SDL2main.lib;glu32.lib;vcruntimed.lib;ucrtd.lib;%(AdditionalDependencies)</Addit
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="3DScanner.cpp" />
+    <ClCompile Include="KinectCom.cpp" />
+    <ClCompile Include="ModelGenerator.cpp" />
+    <ClCompile Include="SerialCom.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="KinectCom.h" />
+    <ClInclude Include="ModelGenerator.h" />
+    <ClInclude Include="SerialCom.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
