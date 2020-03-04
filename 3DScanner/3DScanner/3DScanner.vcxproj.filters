@@ -18,9 +18,6 @@
     <ClCompile Include="Core\main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="GUI\imnodes.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="Imgui\imgui.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -43,6 +40,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Imgui\imgui_impl_sdl.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Camera.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -77,10 +77,10 @@
     <ClInclude Include="GUI\imfilebrowser.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="GUI\imnodes.h">
+    <ClInclude Include="Imgui\imgui_impl_sdl.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Imgui\imgui_impl_sdl.h">
+    <ClInclude Include="Camera.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

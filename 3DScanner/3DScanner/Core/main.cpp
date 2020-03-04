@@ -24,7 +24,6 @@ const int height = 424;
 const int colorwidth = 1920;
 const int colorheight = 1080;
 
-
 bool firstFrame = false;
 
 // We'll be using buffer objects to store the kinect point cloud
@@ -181,9 +180,14 @@ void getKinectData() {
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+		ImVec2 vMin = ImGui::GetWindowContentRegionMin();
+		ImVec2 vMax = ImGui::GetWindowContentRegionMax();
+
+		ImVec2 size(vMax.x - vMin.x, vMax.y - vMin.y);
+
 		//ImGui::GetWindowDrawList()->AddImage((void*)kinectTexture, ImVec2(ImGui::GetItemRectMin().x + pos.x,
 		//	ImGui::GetItemRectMin().y + pos.y), ImVec2(pos.x + H / 2, pos.y + W / 2), ImVec2(0, 1), ImVec2(1, 0));
-		ImGui::Image((void*)kinectTexture, ImVec2(width, height), ImVec2(0, 1), ImVec2(1,0));
+		ImGui::Image((void*)kinectTexture, size, ImVec2(0, 1), ImVec2(1,0));
 	}
 	ImGui::End();
 	
