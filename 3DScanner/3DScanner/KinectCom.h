@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Kinect.h>
-#include <SDL_opengl.h>
+#include <SDL/SDL_opengl.h>
 
 #define RGB_WIDTH 1920
 #define RGB_HEIGHT 1080
