@@ -12,189 +12,185 @@
 #include "GL/glew.h"
 #include "SDL/SDL.h"
 
-#include <Windows.h>
-#include <Ole2.h>
-
-#include "Kinect.h" 
+#include "Camera.h"
 
 #define IMGUI_IMPL_OPENGL_LOADER_GLEW
 
-const int width = 512;
-const int height = 424;
-const int colorwidth = 1920;
-const int colorheight = 1080;
+//// We'll be using buffer objects to store the kinect point cloud
+//GLuint vboId;
+//GLuint cboId;
+//
+//// Intermediate Buffers
+//unsigned char rgbimage[colorwidth * colorheight * 4];    // Stores RGB color image
+//ColorSpacePoint depth2rgb[width * height];             // Maps depth pixels to rgb pixels
+//CameraSpacePoint depth2xyz[width * height];			 // Maps depth pixels to 3d coordinates
+//
+//// Kinect Variables
+//IKinectSensor* sensor;             // Kinect sensor
+//IMultiSourceFrameReader* reader;   // Kinect data source
+//ICoordinateMapper* mapper;         // Converts between depth, color, and 3d coordinates
+//
+//GLuint kinectFrameBuffer = 0;
+//GLuint kinectTexture;
+//GLuint kinectDepthBuffer;
+//
+//bool initKinect() {
+//	if (FAILED(GetDefaultKinectSensor(&sensor))) {
+//		return false;
+//	}
+//	if (sensor) {
+//		sensor->get_CoordinateMapper(&mapper);
+//
+//		sensor->Open();
+//		sensor->OpenMultiSourceFrameReader(
+//			FrameSourceTypes::FrameSourceTypes_Depth | FrameSourceTypes::FrameSourceTypes_Color,
+//			&reader);
+//		return reader;
+//	}
+//	else {
+//		return false;
+//	}
+//}
+//
+//void getDepthData(IMultiSourceFrame* frame, GLubyte* dest) {
+//	IDepthFrame* depthframe;
+//	IDepthFrameReference* frameref = NULL;
+//	frame->get_DepthFrameReference(&frameref);
+//	frameref->AcquireFrame(&depthframe);
+//	if (frameref) frameref->Release();
+//
+//	if (!depthframe) return;
+//
+//	// Get data from frame
+//	unsigned int sz;
+//	unsigned short* buf;
+//	depthframe->AccessUnderlyingBuffer(&sz, &buf);
+//
+//	// Write vertex coordinates
+//	mapper->MapDepthFrameToCameraSpace(width * height, buf, width * height, depth2xyz);
+//	float* fdest = (float*)dest;
+//	for (int i = 0; i < sz; i++) {
+//		*fdest++ = depth2xyz[i].X;
+//		*fdest++ = depth2xyz[i].Y;
+//		*fdest++ = depth2xyz[i].Z;
+//	}
+//
+//	// Fill in depth2rgb map
+//	mapper->MapDepthFrameToColorSpace(width * height, buf, width * height, depth2rgb);
+//	if (depthframe) depthframe->Release();
+//}
+//
+//void getRgbData(IMultiSourceFrame* frame, GLubyte* dest) {
+//	IColorFrame* colorframe;
+//	IColorFrameReference* frameref = NULL;
+//	frame->get_ColorFrameReference(&frameref);
+//	frameref->AcquireFrame(&colorframe);
+//	if (frameref) frameref->Release();
+//
+//	if (!colorframe) return;
+//
+//	// Get data from frame
+//	colorframe->CopyConvertedFrameDataToArray(colorwidth * colorheight * 4, rgbimage, ColorImageFormat_Rgba);
+//
+//	// Write color array for vertices
+//	float* fdest = (float*)dest;
+//	for (int i = 0; i < width * height; i++) {
+//		ColorSpacePoint p = depth2rgb[i];
+//		// Check if color pixel coordinates are in bounds
+//		if (p.X < 0 || p.Y < 0 || p.X > colorwidth || p.Y > colorheight) {
+//			*fdest++ = 0;
+//			*fdest++ = 0;
+//			*fdest++ = 0;
+//		}
+//		else {
+//			int idx = (int)p.X + colorwidth * (int)p.Y;
+//			*fdest++ = rgbimage[4 * idx + 0] / 255.;
+//			*fdest++ = rgbimage[4 * idx + 1] / 255.;
+//			*fdest++ = rgbimage[4 * idx + 2] / 255.;
+//		}
+//		// Don't copy alpha channel
+//	}
+//
+//	if (colorframe) colorframe->Release();
+//}
+//
+//void getKinectData() {
+//	IMultiSourceFrame* frame = NULL;
+//	if (SUCCEEDED(reader->AcquireLatestFrame(&frame))) {
+//		GLubyte* ptr;
+//		glBindBuffer(GL_ARRAY_BUFFER, vboId);
+//		ptr = (GLubyte*)glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
+//		if (ptr) {
+//			getDepthData(frame, ptr);
+//		}
+//		glUnmapBuffer(GL_ARRAY_BUFFER);
+//		glBindBuffer(GL_ARRAY_BUFFER, cboId);
+//		ptr = (GLubyte*)glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
+//		if (ptr) {
+//			getRgbData(frame, ptr);
+//		}
+//		glUnmapBuffer(GL_ARRAY_BUFFER);
+//
+//		firstFrame = true;
+//	}
+//	if (frame) frame->Release();
+//
+//
+//	if(ImGui::Begin("Point Cloud"))
+//	{
+//		ImVec2 pos = ImGui::GetCursorScreenPos();
+//
+//		glBindFramebuffer(GL_FRAMEBUFFER, kinectFrameBuffer);
+//		glViewport(0, 0, width, height);
+//		glMatrixMode(GL_PROJECTION);
+//		glLoadIdentity();
+//		gluPerspective(45, width / (GLdouble)height, 0.1, 1000);
+//		glMatrixMode(GL_MODELVIEW);
+//		glLoadIdentity();
+//		gluLookAt(0, 0, 0, 0, 0, 1, 0, 1, 0);
+//		
+//		static double angle = 0.;
+//		static double radius = 3.;
+//		double x = radius * sin(angle);
+//		double z = radius * (1 - cos(angle)) - radius / 2;
+//		glMatrixMode(GL_MODELVIEW);
+//		glLoadIdentity();
+//		gluLookAt(x, 0, z, 0, 0, radius / 2, 0, 1, 0);
+//		angle += 0.002;
+//		
+//		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+//		glEnableClientState(GL_VERTEX_ARRAY);
+//		glEnableClientState(GL_COLOR_ARRAY);
+//
+//		glBindBuffer(GL_ARRAY_BUFFER, vboId);
+//		glVertexPointer(3, GL_FLOAT, 0, NULL);
+//
+//		glBindBuffer(GL_ARRAY_BUFFER, cboId);
+//		glColorPointer(3, GL_FLOAT, 0, NULL);
+//
+//		glPointSize(1.f);
+//		glDrawArrays(GL_POINTS, 0, width * height);
+//
+//		glDisableClientState(GL_VERTEX_ARRAY);
+//		glDisableClientState(GL_COLOR_ARRAY);
+//
+//		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+//
+//		ImVec2 vMin = ImGui::GetWindowContentRegionMin();
+//		ImVec2 vMax = ImGui::GetWindowContentRegionMax();
+//
+//		ImVec2 size(vMax.x - vMin.x, vMax.y - vMin.y);
+//
+//		//ImGui::GetWindowDrawList()->AddImage((void*)kinectTexture, ImVec2(ImGui::GetItemRectMin().x + pos.x,
+//		//	ImGui::GetItemRectMin().y + pos.y), ImVec2(pos.x + H / 2, pos.y + W / 2), ImVec2(0, 1), ImVec2(1, 0));
+//		ImGui::Image((void*)kinectTexture, size, ImVec2(0, 1), ImVec2(1,0));
+//	}
+//	ImGui::End();
+//	
+//	
+//}
 
-bool firstFrame = false;
-
-// We'll be using buffer objects to store the kinect point cloud
-GLuint vboId;
-GLuint cboId;
-
-// Intermediate Buffers
-unsigned char rgbimage[colorwidth * colorheight * 4];    // Stores RGB color image
-ColorSpacePoint depth2rgb[width * height];             // Maps depth pixels to rgb pixels
-CameraSpacePoint depth2xyz[width * height];			 // Maps depth pixels to 3d coordinates
-
-// Kinect Variables
-IKinectSensor* sensor;             // Kinect sensor
-IMultiSourceFrameReader* reader;   // Kinect data source
-ICoordinateMapper* mapper;         // Converts between depth, color, and 3d coordinates
-
-GLuint kinectFrameBuffer = 0;
-GLuint kinectTexture;
-GLuint kinectDepthBuffer;
-
-bool initKinect() {
-	if (FAILED(GetDefaultKinectSensor(&sensor))) {
-		return false;
-	}
-	if (sensor) {
-		sensor->get_CoordinateMapper(&mapper);
-
-		sensor->Open();
-		sensor->OpenMultiSourceFrameReader(
-			FrameSourceTypes::FrameSourceTypes_Depth | FrameSourceTypes::FrameSourceTypes_Color,
-			&reader);
-		return reader;
-	}
-	else {
-		return false;
-	}
-}
-
-void getDepthData(IMultiSourceFrame* frame, GLubyte* dest) {
-	IDepthFrame* depthframe;
-	IDepthFrameReference* frameref = NULL;
-	frame->get_DepthFrameReference(&frameref);
-	frameref->AcquireFrame(&depthframe);
-	if (frameref) frameref->Release();
-
-	if (!depthframe) return;
-
-	// Get data from frame
-	unsigned int sz;
-	unsigned short* buf;
-	depthframe->AccessUnderlyingBuffer(&sz, &buf);
-
-	// Write vertex coordinates
-	mapper->MapDepthFrameToCameraSpace(width * height, buf, width * height, depth2xyz);
-	float* fdest = (float*)dest;
-	for (int i = 0; i < sz; i++) {
-		*fdest++ = depth2xyz[i].X;
-		*fdest++ = depth2xyz[i].Y;
-		*fdest++ = depth2xyz[i].Z;
-	}
-
-	// Fill in depth2rgb map
-	mapper->MapDepthFrameToColorSpace(width * height, buf, width * height, depth2rgb);
-	if (depthframe) depthframe->Release();
-}
-
-void getRgbData(IMultiSourceFrame* frame, GLubyte* dest) {
-	IColorFrame* colorframe;
-	IColorFrameReference* frameref = NULL;
-	frame->get_ColorFrameReference(&frameref);
-	frameref->AcquireFrame(&colorframe);
-	if (frameref) frameref->Release();
-
-	if (!colorframe) return;
-
-	// Get data from frame
-	colorframe->CopyConvertedFrameDataToArray(colorwidth * colorheight * 4, rgbimage, ColorImageFormat_Rgba);
-
-	// Write color array for vertices
-	float* fdest = (float*)dest;
-	for (int i = 0; i < width * height; i++) {
-		ColorSpacePoint p = depth2rgb[i];
-		// Check if color pixel coordinates are in bounds
-		if (p.X < 0 || p.Y < 0 || p.X > colorwidth || p.Y > colorheight) {
-			*fdest++ = 0;
-			*fdest++ = 0;
-			*fdest++ = 0;
-		}
-		else {
-			int idx = (int)p.X + colorwidth * (int)p.Y;
-			*fdest++ = rgbimage[4 * idx + 0] / 255.;
-			*fdest++ = rgbimage[4 * idx + 1] / 255.;
-			*fdest++ = rgbimage[4 * idx + 2] / 255.;
-		}
-		// Don't copy alpha channel
-	}
-
-	if (colorframe) colorframe->Release();
-}
-
-void getKinectData() {
-	IMultiSourceFrame* frame = NULL;
-	if (SUCCEEDED(reader->AcquireLatestFrame(&frame))) {
-		GLubyte* ptr;
-		glBindBuffer(GL_ARRAY_BUFFER, vboId);
-		ptr = (GLubyte*)glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
-		if (ptr) {
-			getDepthData(frame, ptr);
-		}
-		glUnmapBuffer(GL_ARRAY_BUFFER);
-		glBindBuffer(GL_ARRAY_BUFFER, cboId);
-		ptr = (GLubyte*)glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
-		if (ptr) {
-			getRgbData(frame, ptr);
-		}
-		glUnmapBuffer(GL_ARRAY_BUFFER);
-
-		firstFrame = true;
-	}
-	if (frame) frame->Release();
-
-
-	if(ImGui::Begin("Point Cloud"))
-	{
-		ImVec2 pos = ImGui::GetCursorScreenPos();
-
-		glBindFramebuffer(GL_FRAMEBUFFER, kinectFrameBuffer);
-		glViewport(0, 0, width, height);
-
-		static double angle = 0.;
-		static double radius = 3.;
-		double x = radius * sin(angle);
-		double z = radius * (1 - cos(angle)) - radius / 2;
-		glMatrixMode(GL_MODELVIEW);
-		glLoadIdentity();
-		gluLookAt(x, 0, z, 0, 0, radius / 2, 0, 1, 0);
-		angle += 0.002;
-		
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		glEnableClientState(GL_VERTEX_ARRAY);
-		glEnableClientState(GL_COLOR_ARRAY);
-
-		glBindBuffer(GL_ARRAY_BUFFER, vboId);
-		glVertexPointer(3, GL_FLOAT, 0, NULL);
-
-		glBindBuffer(GL_ARRAY_BUFFER, cboId);
-		glColorPointer(3, GL_FLOAT, 0, NULL);
-
-		glPointSize(1.f);
-		glDrawArrays(GL_POINTS, 0, width * height);
-
-		glDisableClientState(GL_VERTEX_ARRAY);
-		glDisableClientState(GL_COLOR_ARRAY);
-
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-		ImVec2 vMin = ImGui::GetWindowContentRegionMin();
-		ImVec2 vMax = ImGui::GetWindowContentRegionMax();
-
-		ImVec2 size(vMax.x - vMin.x, vMax.y - vMin.y);
-
-		//ImGui::GetWindowDrawList()->AddImage((void*)kinectTexture, ImVec2(ImGui::GetItemRectMin().x + pos.x,
-		//	ImGui::GetItemRectMin().y + pos.y), ImVec2(pos.x + H / 2, pos.y + W / 2), ImVec2(0, 1), ImVec2(1, 0));
-		ImGui::Image((void*)kinectTexture, size, ImVec2(0, 1), ImVec2(1,0));
-	}
-	ImGui::End();
-	
-	
-}
-
-int main(int, char**)
+int SDL_main(int, char**)
 {
 	// GL 3.0 + GLSL 130
 	const char* glsl_version = "#version 440";
@@ -284,54 +280,58 @@ int main(int, char**)
 	
 	fileDialog.SetTitle("Save mesh to");
 
-	//Try to initialise the kinect
-	if (!initKinect())
+	////Try to initialise the kinect
+	//if (!initKinect())
+	//	return 1;
+
+	////Create kinect frame buffer
+	//glGenFramebuffers(1, &kinectFrameBuffer);
+	//glBindFramebuffer(GL_FRAMEBUFFER, kinectFrameBuffer);
+
+	////Create texutre to render to
+	//glGenTextures(1, &kinectTexture);
+	//glBindTexture(GL_TEXTURE_2D, kinectTexture);
+	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+	////Kinect depth buffer
+	//glGenRenderbuffers(1, &kinectDepthBuffer);
+	//glBindRenderbuffer(GL_RENDERBUFFER, kinectDepthBuffer);
+	//glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, width, height);
+	//glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, kinectDepthBuffer);
+	//
+	////Set kinect texture to buffer
+	//glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, kinectTexture, 0);
+	//GLenum DrawBuffers[1] = { GL_COLOR_ATTACHMENT0 };
+	//glDrawBuffers(1, DrawBuffers);
+
+	////Check the frame buffer
+	//if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+	//	return false;
+	//
+	//// Set up array buffers
+	//const int dataSize = width * height * 3 * 4;
+	//glGenBuffers(1, &vboId);
+	//glBindBuffer(GL_ARRAY_BUFFER, vboId);
+	//glBufferData(GL_ARRAY_BUFFER, dataSize, 0, GL_DYNAMIC_DRAW);
+	//glGenBuffers(1, &cboId);
+	//glBindBuffer(GL_ARRAY_BUFFER, cboId);
+	//glBufferData(GL_ARRAY_BUFFER, dataSize, 0, GL_DYNAMIC_DRAW);
+
+	//// Camera setup
+	//glViewport(0, 0, width, height);
+	//glMatrixMode(GL_PROJECTION);
+	//glLoadIdentity();
+	//gluPerspective(45, width / (GLdouble)height, 0.1, 1000);
+	//glMatrixMode(GL_MODELVIEW);
+	//glLoadIdentity();
+	//gluLookAt(0, 0, 0, 0, 0, 1, 0, 1, 0);
+
+	Camera kinect;
+	if (!kinect.Init())
 		return 1;
 
-	//Create kinect frame buffer
-	glGenFramebuffers(1, &kinectFrameBuffer);
-	glBindFramebuffer(GL_FRAMEBUFFER, kinectFrameBuffer);
-
-	//Create texutre to render to
-	glGenTextures(1, &kinectTexture);
-	glBindTexture(GL_TEXTURE_2D, kinectTexture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-
-	//Kinect depth buffer
-	glGenRenderbuffers(1, &kinectDepthBuffer);
-	glBindRenderbuffer(GL_RENDERBUFFER, kinectDepthBuffer);
-	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, width, height);
-	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, kinectDepthBuffer);
-	
-	//Set kinect texture to buffer
-	glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, kinectTexture, 0);
-	GLenum DrawBuffers[1] = { GL_COLOR_ATTACHMENT0 };
-	glDrawBuffers(1, DrawBuffers);
-
-	//Check the frame buffer
-	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-		return false;
-	
-	// Set up array buffers
-	const int dataSize = width * height * 3 * 4;
-	glGenBuffers(1, &vboId);
-	glBindBuffer(GL_ARRAY_BUFFER, vboId);
-	glBufferData(GL_ARRAY_BUFFER, dataSize, 0, GL_DYNAMIC_DRAW);
-	glGenBuffers(1, &cboId);
-	glBindBuffer(GL_ARRAY_BUFFER, cboId);
-	glBufferData(GL_ARRAY_BUFFER, dataSize, 0, GL_DYNAMIC_DRAW);
-
-	// Camera setup
-	glViewport(0, 0, width, height);
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	gluPerspective(45, width / (GLdouble)height, 0.1, 1000);
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
-	gluLookAt(0, 0, 0, 0, 0, 1, 0, 1, 0);
-	
 	while (!done)
 	{
 		// Poll and handle events (inputs, window resize, etc.)
@@ -354,25 +354,41 @@ int main(int, char**)
 		ImGui_ImplSDL2_NewFrame(window);
 		ImGui::NewFrame();
 
-		getKinectData();
+		//getKinectData();
+		kinect.GetKinectData();
+		kinect.RenderToTexture();
+
+		if(ImGui::Begin("Point Cloud"))
+		{
+			ImVec2 vMin = ImGui::GetWindowContentRegionMin();
+			ImVec2 vMax = ImGui::GetWindowContentRegionMax();
+
+			ImVec2 size(vMax.x - vMin.x, vMax.y - vMin.y);
+			
+			ImGui::Image((void*) kinect.GetTexture()[0],size, ImVec2(0, 1), ImVec2(1, 0));
+		}
+		ImGui::End();
+
+		if (ImGui::Begin("RGB Image"))
+		{
+			ImVec2 vMin = ImGui::GetWindowContentRegionMin();
+			ImVec2 vMax = ImGui::GetWindowContentRegionMax();
+
+			ImVec2 size(vMax.x - vMin.x, vMax.y - vMin.y);
+
+			ImGui::Image((void*)kinect.GetTexture()[1], size, ImVec2(0, 0), ImVec2(1, 1));
+		}
+		ImGui::End();
 		
 		if(ImGui::Begin("TEST!"))
 		{
+			
 			ImGui::Text("Hello World!");
 		}
 		ImGui::End();				
 
 		// Rendering
 		ImGui::Render();
-
-		// Camera setup
-		glViewport(0, 0, width, height);
-		glMatrixMode(GL_PROJECTION);
-		glLoadIdentity();
-		gluPerspective(45, width / (GLdouble)height, 0.1, 1000);
-		glMatrixMode(GL_MODELVIEW);
-		glLoadIdentity();
-		gluLookAt(0, 0, 0, 0, 0, 1, 0, 1, 0);
 		
 		glViewport(0, 0, static_cast<int>(io.DisplaySize.x), static_cast<int>(io.DisplaySize.y));
 		glClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
