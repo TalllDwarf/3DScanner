@@ -10,8 +10,9 @@ void Camera::GetKinectData()
 	IMultiSourceFrame* frame = NULL;
 	if (SUCCEEDED(reader->AcquireLatestFrame(&frame))) {
 		GLubyte* ptr;
+		
 		glBindBuffer(GL_ARRAY_BUFFER, vboId);
-		ptr = (GLubyte*)glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
+		ptr = static_cast<GLubyte*>(glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY));
 		if (ptr) {
 			GetDepthData(frame, ptr);
 		}
@@ -19,13 +20,13 @@ void Camera::GetKinectData()
 
 		glBindTexture(GL_TEXTURE_2D, kinectTexture[1]);
 		glBindBuffer(GL_ARRAY_BUFFER, cboId);
-		ptr = (GLubyte*)glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
+		ptr = static_cast<GLubyte*>(glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY));
 		if (ptr) {
 			GetRgbData(frame, ptr);
 		}
 		glUnmapBuffer(GL_ARRAY_BUFFER);
 
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, RGB_SENSOR_WIDTH, RGB_SENSOR_HEIGHT, GL_BGRA, GL_UNSIGNED_BYTE, (GLvoid*)rgbimage);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, RGB_SENSOR_WIDTH, RGB_SENSOR_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, (GLvoid*)rgbimage);
 	}
 	if (frame) frame->Release();
 }
@@ -46,23 +47,23 @@ void Camera::GetDepthData(IMultiSourceFrame* frame, GLubyte* dest)
 	depthframe->AccessUnderlyingBuffer(&sz, &buf);
 
 	// Write vertex coordinates
-	mapper->MapDepthFrameToCameraSpace(DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT, buf, DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT, depth2xyz);
+	mapper->MapDepthFrameToCameraSpace(DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT, buf, DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT, modelShot.xyz);
 	float* fdest = (float*)dest;
 	for (int i = 0; i < sz; i++) {
-		*fdest++ = depth2xyz[i].X;
-		*fdest++ = depth2xyz[i].Y;
-		*fdest++ = depth2xyz[i].Z;
+		*fdest++ = modelShot.xyz[i].X;
+		*fdest++ = modelShot.xyz[i].Y;
+		*fdest++ = modelShot.xyz[i].Z;
 	}
 
 	// Fill in depth2rgb map
-	mapper->MapDepthFrameToColorSpace(DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT, buf, DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT, depth2rgb);
+	mapper->MapDepthFrameToColorSpace(DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT, buf, DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT, modelShot.rgb);
 	if (depthframe) depthframe->Release();
 }
 
 void Camera::GetRgbData(IMultiSourceFrame* frame, GLubyte* dest)
 {
 	IColorFrame* colorframe;
-	IColorFrameReference* frameref = NULL;
+	IColorFrameReference* frameref = nullptr;
 	frame->get_ColorFrameReference(&frameref);
 	frameref->AcquireFrame(&colorframe);
 	if (frameref) frameref->Release();
@@ -73,9 +74,9 @@ void Camera::GetRgbData(IMultiSourceFrame* frame, GLubyte* dest)
 	colorframe->CopyConvertedFrameDataToArray(RGB_SENSOR_WIDTH * RGB_SENSOR_HEIGHT * 4, rgbimage, ColorImageFormat_Rgba);
 
 	// Write color array for vertices
-	float* fdest = (float*)dest;
+	auto fdest = reinterpret_cast<float*>(dest);
 	for (int i = 0; i < DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT; i++) {
-		ColorSpacePoint p = depth2rgb[i];
+		ColorSpacePoint p = modelShot.rgb[i];
 		// Check if color pixel coordinates are in bounds
 		if (p.X < 0 || p.Y < 0 || p.X > RGB_SENSOR_WIDTH || p.Y > RGB_SENSOR_HEIGHT) {
 			*fdest++ = 0;
@@ -83,7 +84,7 @@ void Camera::GetRgbData(IMultiSourceFrame* frame, GLubyte* dest)
 			*fdest++ = 0;
 		}
 		else {
-			int idx = (int)p.X + RGB_SENSOR_WIDTH * (int)p.Y;
+			int idx = static_cast<int>(p.X) + RGB_SENSOR_WIDTH * static_cast<int>(p.Y);
 			*fdest++ = rgbimage[4 * idx + 0] / 255.;
 			*fdest++ = rgbimage[4 * idx + 1] / 255.;
 			*fdest++ = rgbimage[4 * idx + 2] / 255.;
@@ -93,27 +94,31 @@ void Camera::GetRgbData(IMultiSourceFrame* frame, GLubyte* dest)
 	if (colorframe) colorframe->Release();
 }
 
-void Camera::RenderToTexture()
+void Camera::RenderToTexture(float angle, float x, float y, float z) const
 {
 	glBindFramebuffer(GL_FRAMEBUFFER, kinectFrameBuffer);
 	glViewport(0, 0, DEPTH_SENSOR_WIDTH, DEPTH_SENSOR_HEIGHT);
 	
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
-	gluPerspective(45, DEPTH_SENSOR_WIDTH / (GLdouble)DEPTH_SENSOR_HEIGHT, 0.1, 1000);
+	gluPerspective(80, DEPTH_SENSOR_WIDTH / static_cast<GLdouble>(DEPTH_SENSOR_HEIGHT), 0.1, 1000);
+
+	const float eyex = x * cos(angle) - z  * sin(angle) + x;
+	const float eyey = x * sin(angle) + z  * cos(angle) + z;
+	
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
-	gluLookAt(0, 0, 0, 0, 0, 1, 0, 1, 0);
+	gluLookAt(x, y, z, eyex, y, eyey, 0, y, 0);
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glEnableClientState(GL_VERTEX_ARRAY);
 	glEnableClientState(GL_COLOR_ARRAY);
 
 	glBindBuffer(GL_ARRAY_BUFFER, vboId);
-	glVertexPointer(3, GL_FLOAT, 0, NULL);
+	glVertexPointer(3, GL_FLOAT, 0, nullptr);
 
 	glBindBuffer(GL_ARRAY_BUFFER, cboId);
-	glColorPointer(3, GL_FLOAT, 0, NULL);
+	glColorPointer(3, GL_FLOAT, 0, nullptr);
 
 	glPointSize(1.f);
 	glDrawArrays(GL_POINTS, 0, DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT);
@@ -129,11 +134,16 @@ GLuint* Camera::GetTexture()
 	return kinectTexture;
 }
 
+const ModelShot* Camera::GetCurrentModelShot() const
+{
+	return &modelShot;
+}
+
 Camera::Camera()
 {
 	rgbimage = new unsigned char[RGB_SENSOR_WIDTH * RGB_SENSOR_HEIGHT * 4];
-	depth2rgb = new ColorSpacePoint[DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT];
-	depth2xyz = new CameraSpacePoint[DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT];
+	modelShot.rgb = new ColorSpacePoint[DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT];
+	modelShot.xyz = new CameraSpacePoint[DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT];
 
 	kinectTexture = new GLuint[3];
 }
@@ -141,8 +151,10 @@ Camera::Camera()
 Camera::~Camera()
 {
 	delete[] rgbimage;
-	delete[] depth2rgb;
-	delete[] depth2xyz;
+	delete[] modelShot.rgb;
+	delete[] modelShot.xyz;
+	//delete[] depth2rgb;
+	//delete[] depth2xyz;
 
 	delete[] kinectTexture;
 }
@@ -175,7 +187,7 @@ bool Camera::Init()
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
 		glBindTexture(GL_TEXTURE_2D, kinectTexture[1]);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, RGB_SENSOR_WIDTH, RGB_SENSOR_HEIGHT, 0, GL_BGRA, GL_UNSIGNED_BYTE, (GLvoid*)rgbimage);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, RGB_SENSOR_WIDTH, RGB_SENSOR_HEIGHT, 0, GL_BGRA, GL_UNSIGNED_BYTE, static_cast<GLvoid*>(rgbimage));
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 

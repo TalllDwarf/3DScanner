@@ -3,6 +3,8 @@
 #include <cstdio>
 #include <iostream>
 
+
+#include "../ModelCapture.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "imgui_impl_sdl.h"
@@ -210,7 +212,7 @@ int SDL_main(int, char**)
 	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0)
 	{
 		printf("Error: %s\n", SDL_GetError());
-		return -1;
+		return EXIT_FAILURE;
 	}
 
 	SDL_Window* window = SDL_CreateWindow("Node++", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, SDL_WINDOW_OPENGL
@@ -220,7 +222,7 @@ int SDL_main(int, char**)
 	if (window == nullptr)
 	{
 		printf("SDL Window could not be created! SDL Error: %s\n", SDL_GetError());
-		return 1;
+		return EXIT_FAILURE;
 	}
 
 	const SDL_GLContext gl_context = SDL_GL_CreateContext(window);
@@ -228,7 +230,7 @@ int SDL_main(int, char**)
 	if (gl_context == nullptr)
 	{
 		printf("OpenGL context could not be created! SDL Error: %s\n", SDL_GetError());
-		return 1;
+		return EXIT_FAILURE;
 	}
 	SDL_GL_MakeCurrent(window, gl_context);
 	SDL_GL_SetSwapInterval(1); // Enable vsync
@@ -240,7 +242,7 @@ int SDL_main(int, char**)
 	if (err != GLEW_OK)
 	{
 		fprintf(stderr, "Failed to init OpenGL loader!\n");
-		return 1;
+		return EXIT_FAILURE;
 	}
 
 	// Setup Dear ImGui context
@@ -280,58 +282,16 @@ int SDL_main(int, char**)
 	
 	fileDialog.SetTitle("Save mesh to");
 
-	////Try to initialise the kinect
-	//if (!initKinect())
-	//	return 1;
-
-	////Create kinect frame buffer
-	//glGenFramebuffers(1, &kinectFrameBuffer);
-	//glBindFramebuffer(GL_FRAMEBUFFER, kinectFrameBuffer);
-
-	////Create texutre to render to
-	//glGenTextures(1, &kinectTexture);
-	//glBindTexture(GL_TEXTURE_2D, kinectTexture);
-	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
-	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-
-	////Kinect depth buffer
-	//glGenRenderbuffers(1, &kinectDepthBuffer);
-	//glBindRenderbuffer(GL_RENDERBUFFER, kinectDepthBuffer);
-	//glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, width, height);
-	//glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, kinectDepthBuffer);
-	//
-	////Set kinect texture to buffer
-	//glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, kinectTexture, 0);
-	//GLenum DrawBuffers[1] = { GL_COLOR_ATTACHMENT0 };
-	//glDrawBuffers(1, DrawBuffers);
-
-	////Check the frame buffer
-	//if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-	//	return false;
-	//
-	//// Set up array buffers
-	//const int dataSize = width * height * 3 * 4;
-	//glGenBuffers(1, &vboId);
-	//glBindBuffer(GL_ARRAY_BUFFER, vboId);
-	//glBufferData(GL_ARRAY_BUFFER, dataSize, 0, GL_DYNAMIC_DRAW);
-	//glGenBuffers(1, &cboId);
-	//glBindBuffer(GL_ARRAY_BUFFER, cboId);
-	//glBufferData(GL_ARRAY_BUFFER, dataSize, 0, GL_DYNAMIC_DRAW);
-
-	//// Camera setup
-	//glViewport(0, 0, width, height);
-	//glMatrixMode(GL_PROJECTION);
-	//glLoadIdentity();
-	//gluPerspective(45, width / (GLdouble)height, 0.1, 1000);
-	//glMatrixMode(GL_MODELVIEW);
-	//glLoadIdentity();
-	//gluLookAt(0, 0, 0, 0, 0, 1, 0, 1, 0);
-
 	Camera kinect;
 	if (!kinect.Init())
-		return 1;
+		return EXIT_FAILURE;
 
+	ModelCapture capture(&kinect);
+
+	float preview_angle = 1;
+	float preview_xyz[3] = { 0,0,0 };
+	float model_angle = 1;
+	
 	while (!done)
 	{
 		// Poll and handle events (inputs, window resize, etc.)
@@ -356,7 +316,7 @@ int SDL_main(int, char**)
 
 		//getKinectData();
 		kinect.GetKinectData();
-		kinect.RenderToTexture();
+		kinect.RenderToTexture(preview_angle, preview_xyz[0], preview_xyz[1], preview_xyz[2]);
 
 		if(ImGui::Begin("Point Cloud"))
 		{
@@ -365,7 +325,7 @@ int SDL_main(int, char**)
 
 			ImVec2 size(vMax.x - vMin.x, vMax.y - vMin.y);
 			
-			ImGui::Image((void*) kinect.GetTexture()[0],size, ImVec2(0, 1), ImVec2(1, 0));
+			ImGui::Image(reinterpret_cast<void*>(kinect.GetTexture()[0]),size, ImVec2(0, 1), ImVec2(1, 0));
 		}
 		ImGui::End();
 
@@ -376,16 +336,16 @@ int SDL_main(int, char**)
 
 			ImVec2 size(vMax.x - vMin.x, vMax.y - vMin.y);
 
-			ImGui::Image((void*)kinect.GetTexture()[1], size, ImVec2(0, 0), ImVec2(1, 1));
+			ImGui::Image(reinterpret_cast<void*>(kinect.GetTexture()[1]), size, ImVec2(1, 0), ImVec2(0, 1));
 		}
 		ImGui::End();
-		
-		if(ImGui::Begin("TEST!"))
+
+		if(ImGui::Begin("Preview Settings"))
 		{
-			
-			ImGui::Text("Hello World!");
+			ImGui::DragFloat("Angle", &preview_angle, 0.001f, -6.283f, 6.283f);
+			ImGui::DragFloat3("Position", preview_xyz, 0.01f);
 		}
-		ImGui::End();				
+		ImGui::End();
 
 		// Rendering
 		ImGui::Render();
