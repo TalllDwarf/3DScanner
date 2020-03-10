@@ -103,12 +103,12 @@ void Camera::RenderToTexture(float angle, float x, float y, float z) const
 	glLoadIdentity();
 	gluPerspective(80, DEPTH_SENSOR_WIDTH / static_cast<GLdouble>(DEPTH_SENSOR_HEIGHT), 0.1, 1000);
 
-	const float eyex = x * cos(angle) - z  * sin(angle) + x;
-	const float eyey = x * sin(angle) + z  * cos(angle) + z;
+	const float eyex = 1 * cos(angle);// -z * sin(angle) + x;
+	const float eyey = 1 * sin(angle);// +z * cos(angle) + z;
 	
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
-	gluLookAt(x, y, z, eyex, y, eyey, 0, y, 0);
+	gluLookAt(x, y, z, x + eyex, y,  z + eyey, 0, y, 0);
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glEnableClientState(GL_VERTEX_ARRAY);

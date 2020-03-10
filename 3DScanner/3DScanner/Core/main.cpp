@@ -289,7 +289,7 @@ int SDL_main(int, char**)
 	ModelCapture capture(&kinect);
 
 	float preview_angle = 1;
-	float preview_xyz[3] = { 0,0,0 };
+	float preview_xyz[3] = { 0,0.001f,0 };
 	float model_angle = 1;
 	
 	while (!done)
@@ -342,7 +342,7 @@ int SDL_main(int, char**)
 
 		if(ImGui::Begin("Preview Settings"))
 		{
-			ImGui::DragFloat("Angle", &preview_angle, 0.001f, -6.283f, 6.283f);
+			ImGui::DragFloat("Angle", &preview_angle, 0.01f, -6.283f, 6.283f);
 			ImGui::DragFloat3("Position", preview_xyz, 0.01f);
 		}
 		ImGui::End();
