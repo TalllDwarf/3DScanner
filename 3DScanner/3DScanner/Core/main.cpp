@@ -192,6 +192,7 @@
 //	
 //}
 
+
 int SDL_main(int, char**)
 {
 	// GL 3.0 + GLSL 130
@@ -289,8 +290,9 @@ int SDL_main(int, char**)
 	ModelCapture capture(&kinect);
 
 	float preview_angle = 1;
-	float preview_xyz[3] = { 0,0.001f,0 };
+	float preview_xyz[3] = {0.0f, 0.001f, 0.0f};
 	float model_angle = 1;
+	float model_xyz[3] = {0.0f, 0.001f, 0.0f};
 	
 	while (!done)
 	{
@@ -318,34 +320,29 @@ int SDL_main(int, char**)
 		kinect.GetKinectData();
 		kinect.RenderToTexture(preview_angle, preview_xyz[0], preview_xyz[1], preview_xyz[2]);
 
-		if(ImGui::Begin("Point Cloud"))
-		{
-			ImVec2 vMin = ImGui::GetWindowContentRegionMin();
-			ImVec2 vMax = ImGui::GetWindowContentRegionMax();
+		ImVec2 vMin = ImGui::GetWindowContentRegionMin();
+		ImVec2 vMax = ImGui::GetWindowContentRegionMax();
 
-			ImVec2 size(vMax.x - vMin.x, vMax.y - vMin.y);
-			
+		ImVec2 size(vMax.x - vMin.x, vMax.y - vMin.y);
+		
+		if(ImGui::Begin("Point Cloud"))
+		{			
 			ImGui::Image(reinterpret_cast<void*>(kinect.GetTexture()[0]),size, ImVec2(0, 1), ImVec2(1, 0));
+
+			ImGui::Separator();
+			
+			ImGui::DragFloat("Angle", &preview_angle, 0.01f, -6.283f, 6.283f);
+			ImGui::DragFloat3("Position", preview_xyz, 0.01f);
 		}
 		ImGui::End();
 
 		if (ImGui::Begin("RGB Image"))
 		{
-			ImVec2 vMin = ImGui::GetWindowContentRegionMin();
-			ImVec2 vMax = ImGui::GetWindowContentRegionMax();
-
-			ImVec2 size(vMax.x - vMin.x, vMax.y - vMin.y);
-
 			ImGui::Image(reinterpret_cast<void*>(kinect.GetTexture()[1]), size, ImVec2(1, 0), ImVec2(0, 1));
 		}
 		ImGui::End();
 
-		if(ImGui::Begin("Preview Settings"))
-		{
-			ImGui::DragFloat("Angle", &preview_angle, 0.01f, -6.283f, 6.283f);
-			ImGui::DragFloat3("Position", preview_xyz, 0.01f);
-		}
-		ImGui::End();
+		capture.Render(model_angle, model_xyz[0], model_xyz[1], model_xyz[2]);
 
 		// Rendering
 		ImGui::Render();

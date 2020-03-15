@@ -11,7 +11,7 @@ void Camera::GetKinectData()
 	if (SUCCEEDED(reader->AcquireLatestFrame(&frame))) {
 		GLubyte* ptr;
 		
-		glBindBuffer(GL_ARRAY_BUFFER, vboId);
+		glBindBuffer(GL_ARRAY_BUFFER, modelShot.vboId);
 		ptr = static_cast<GLubyte*>(glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY));
 		if (ptr) {
 			GetDepthData(frame, ptr);
@@ -19,7 +19,7 @@ void Camera::GetKinectData()
 		glUnmapBuffer(GL_ARRAY_BUFFER);
 
 		glBindTexture(GL_TEXTURE_2D, kinectTexture[1]);
-		glBindBuffer(GL_ARRAY_BUFFER, cboId);
+		glBindBuffer(GL_ARRAY_BUFFER, modelShot.cboId);
 		ptr = static_cast<GLubyte*>(glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY));
 		if (ptr) {
 			GetRgbData(frame, ptr);
@@ -43,7 +43,7 @@ void Camera::GetDepthData(IMultiSourceFrame* frame, GLubyte* dest)
 
 	// Get data from frame
 	unsigned int sz;
-	unsigned short* buf;
+	UINT16* buf;
 	depthframe->AccessUnderlyingBuffer(&sz, &buf);
 
 	// Write vertex coordinates
@@ -97,11 +97,11 @@ void Camera::GetRgbData(IMultiSourceFrame* frame, GLubyte* dest)
 void Camera::RenderToTexture(float angle, float x, float y, float z) const
 {
 	glBindFramebuffer(GL_FRAMEBUFFER, kinectFrameBuffer);
-	glViewport(0, 0, DEPTH_SENSOR_WIDTH, DEPTH_SENSOR_HEIGHT);
+	glViewport(0, 0, RGB_SENSOR_WIDTH, RGB_SENSOR_HEIGHT);
 	
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
-	gluPerspective(80, DEPTH_SENSOR_WIDTH / static_cast<GLdouble>(DEPTH_SENSOR_HEIGHT), 0.1, 1000);
+	gluPerspective(80, RGB_SENSOR_WIDTH / static_cast<GLdouble>(RGB_SENSOR_HEIGHT), 0.1, 1000);
 
 	const float eyex = 1 * cos(angle);// -z * sin(angle) + x;
 	const float eyey = 1 * sin(angle);// +z * cos(angle) + z;
@@ -114,10 +114,10 @@ void Camera::RenderToTexture(float angle, float x, float y, float z) const
 	glEnableClientState(GL_VERTEX_ARRAY);
 	glEnableClientState(GL_COLOR_ARRAY);
 
-	glBindBuffer(GL_ARRAY_BUFFER, vboId);
+	glBindBuffer(GL_ARRAY_BUFFER, modelShot.vboId);
 	glVertexPointer(3, GL_FLOAT, 0, nullptr);
 
-	glBindBuffer(GL_ARRAY_BUFFER, cboId);
+	glBindBuffer(GL_ARRAY_BUFFER, modelShot.cboId);
 	glColorPointer(3, GL_FLOAT, 0, nullptr);
 
 	glPointSize(1.f);
@@ -145,7 +145,7 @@ Camera::Camera()
 	modelShot.rgb = new ColorSpacePoint[DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT];
 	modelShot.xyz = new CameraSpacePoint[DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT];
 
-	kinectTexture = new GLuint[3];
+	kinectTexture = new GLuint[2];
 }
 
 Camera::~Camera()
@@ -179,10 +179,10 @@ bool Camera::Init()
 
 		//Create texutre to render to
 		
-		glGenTextures(3, kinectTexture);
+		glGenTextures(2, kinectTexture);
 
 		glBindTexture(GL_TEXTURE_2D, kinectTexture[0]);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, DEPTH_SENSOR_WIDTH, DEPTH_SENSOR_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, RGB_SENSOR_WIDTH, RGB_SENSOR_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
@@ -190,22 +190,15 @@ bool Camera::Init()
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, RGB_SENSOR_WIDTH, RGB_SENSOR_HEIGHT, 0, GL_BGRA, GL_UNSIGNED_BYTE, static_cast<GLvoid*>(rgbimage));
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-
-		glBindTexture(GL_TEXTURE_2D, kinectTexture[2]);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, DEPTH_SENSOR_WIDTH, DEPTH_SENSOR_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 			
 		//Kinect depth buffer
 		glGenRenderbuffers(1, &kinectDepthBuffer);
 		glBindRenderbuffer(GL_RENDERBUFFER, kinectDepthBuffer);
-		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, DEPTH_SENSOR_WIDTH, DEPTH_SENSOR_HEIGHT);
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, RGB_SENSOR_WIDTH, RGB_SENSOR_HEIGHT);
 		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, kinectDepthBuffer);
 
 		//Set kinect texture to buffer
 		glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, kinectTexture[0], 0);
-		//glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, kinectTexture[1], 0);
-		//glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, kinectTexture[2], 0);
 		GLenum DrawBuffers[1] = { GL_COLOR_ATTACHMENT0};
 		glDrawBuffers(1, DrawBuffers);
 
@@ -215,11 +208,11 @@ bool Camera::Init()
 
 		// Set up array buffers
 		const int dataSize = DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT * 3 * 4;
-		glGenBuffers(1, &vboId);
-		glBindBuffer(GL_ARRAY_BUFFER, vboId);
+		glGenBuffers(1, &modelShot.vboId);
+		glBindBuffer(GL_ARRAY_BUFFER, modelShot.vboId);
 		glBufferData(GL_ARRAY_BUFFER, dataSize, 0, GL_DYNAMIC_DRAW);
-		glGenBuffers(1, &cboId);
-		glBindBuffer(GL_ARRAY_BUFFER, cboId);
+		glGenBuffers(1, &modelShot.cboId);
+		glBindBuffer(GL_ARRAY_BUFFER, modelShot.cboId);
 		glBufferData(GL_ARRAY_BUFFER, dataSize, 0, GL_DYNAMIC_DRAW);
 		
 		return reader;

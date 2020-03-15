@@ -9,8 +9,6 @@
 
 class SerialCom
 {
-	char authCode[AUTH_SIZE] = { '3', 'D', 'T' };
-
 	//The handle to the serial port
 	HANDLE serialHandle;
 
