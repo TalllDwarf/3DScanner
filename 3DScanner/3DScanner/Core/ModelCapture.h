@@ -2,13 +2,14 @@
 #include <GL/glew.h>
 
 #include "Camera.h"
+#include "imfilebrowser.h"
 #include "SerialCom.h"
 
 struct ScanSettings
 {
-	int numberOfImages;
-	float minDistance;
-	float maxDistance;
+	int numberOfImages = 20;
+	float minDistance = 1.0f;
+	float maxDistance = 1000.0f;
 
 	ModelShot ignoreShot;
 };
@@ -22,12 +23,14 @@ class ModelCapture
 
 	Camera* camera_;
 	SerialCom serial_com_;
-	const char* serialPort = nullptr;
+	std::string serialPort;
 
 	ModelShot* currentModel = nullptr;
 	int modelSize = 0;
 
 	ScanSettings scan_settings_;
+	std::string fileRoot;
+	ImGui::FileBrowser fileDialog;
 
 	void RenderToTexture(float angle, float x, float y, float z) const;
 

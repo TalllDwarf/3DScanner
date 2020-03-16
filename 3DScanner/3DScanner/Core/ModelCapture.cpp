@@ -4,10 +4,14 @@
 
 #include "imgui.h"
 
-ModelCapture::ModelCapture(Camera* camera) : camera_(camera)
+ModelCapture::ModelCapture(Camera* camera) : camera_(camera), fileDialog(ImGuiFileBrowserFlags_EnterNewFilename)
 {
 	serial_com_.SearchForAvailablePorts();
+
+	if (!serial_com_.GetAvailablePorts().empty())
+		serialPort = serial_com_.GetAvailablePorts()[0];
 	
+	fileDialog.SetTitle("Save mesh to");
 }
 
 bool ModelCapture::Init()
@@ -96,15 +100,15 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 
 			if (!connected)
 			{
-				if (ImGui::BeginCombo("Serial Port:", serialPort))
+				if (ImGui::BeginCombo("Serial Port:", serialPort.c_str()))
 				{
 					std::vector<std::string> ports = serial_com_.GetAvailablePorts();
-
+					
 					for (std::string port : ports)
 					{
-						bool isSelected = port.c_str() == serialPort;
-						if (ImGui::Selectable(serialPort, isSelected))
-							serialPort = port.c_str();
+						bool isSelected = port == serialPort;
+						if (ImGui::Selectable(port.c_str(), isSelected))
+							serialPort = port;
 						if (isSelected)
 							ImGui::SetItemDefaultFocus();
 					}
@@ -194,7 +198,12 @@ void ModelCapture::ModelGatherTick(float time)
 {
 	char c = serial_com_.GetCharFromBuffer();
 
-	if(c == 'D' || c == 'F')
+	if(c == 'D')
+	{
+		motorBusy = false;
+	}
+	//Finished all rotation
+	else if(c == 'F')
 	{
 		motorBusy = false;
 	}

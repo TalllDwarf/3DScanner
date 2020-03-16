@@ -277,11 +277,6 @@ int SDL_main(int, char**)
 	// Main loop
 	bool done = false;
 
-	std::string fileRoot;
-	ImGui::FileBrowser fileDialog(ImGuiFileBrowserFlags_CreateNewDir);
-	
-	fileDialog.SetTitle("Save mesh to");
-
 	Camera kinect;
 	if (!kinect.Init())
 		return EXIT_FAILURE;
@@ -351,6 +346,7 @@ int SDL_main(int, char**)
 		ImGui::End();
 
 		capture.Render(model_angle, model_xyz[0], model_xyz[1], model_xyz[2]);
+		capture.ModelGatherTick(deltaTime);
 
 		// Rendering
 		ImGui::Render();
