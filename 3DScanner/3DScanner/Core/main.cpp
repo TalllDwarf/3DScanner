@@ -3,8 +3,6 @@
 #include <cstdio>
 #include <iostream>
 
-
-#include "../ModelCapture.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "imgui_impl_sdl.h"
@@ -15,6 +13,7 @@
 #include "SDL/SDL.h"
 
 #include "Camera.h"
+#include "ModelCapture.h"
 
 #define IMGUI_IMPL_OPENGL_LOADER_GLEW
 
@@ -293,6 +292,10 @@ int SDL_main(int, char**)
 	float preview_xyz[3] = {0.0f, 0.001f, 0.0f};
 	float model_angle = 1;
 	float model_xyz[3] = {0.0f, 0.001f, 0.0f};
+
+	Uint64 NOW = SDL_GetPerformanceCounter();
+	Uint64 LAST = 0;
+	float deltaTime = 0;
 	
 	while (!done)
 	{
@@ -310,7 +313,12 @@ int SDL_main(int, char**)
 			if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID(window))
 				done = true;
 		}
-	
+
+		LAST = NOW;
+		NOW = SDL_GetPerformanceCounter();
+
+		deltaTime = (float)((NOW - LAST) * 1000 / (float)SDL_GetPerformanceFrequency());
+		
 		// Start the Dear ImGui frame
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplSDL2_NewFrame(window);
@@ -352,7 +360,6 @@ int SDL_main(int, char**)
 		glClear(GL_COLOR_BUFFER_BIT);
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 		SDL_GL_SwapWindow(window);
-
 	}
 
 	// Cleanup

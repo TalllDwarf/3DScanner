@@ -17,10 +17,7 @@ class SerialCom
 	std::string readBuffer;
 
 	//Gets the last error and stores it in lastError
-	void ShowError();
-
-	//Check auth code from serial com
-	bool CheckAuthCode();
+	static void ShowError();
 
 public:
 
@@ -31,14 +28,14 @@ public:
 	void ClosePort();
 
 	[[nodiscard]] bool DataAvailable();
-	[[nodiscard]] bool DataInBuffer();
+	[[nodiscard]] bool DataInBuffer() const;
 
 	void SearchForAvailablePorts();
 
-	[[nodiscard]] std::vector<std::string> GetAvailablePorts();
+	[[nodiscard]] std::vector<std::string> GetAvailablePorts() const;
 
 	char GetCharFromBuffer();
-	std::string GetReadBuffer();
+	std::string GetReadBuffer() const;
 
 	bool WriteChar(char outChar);
 	bool WriteString(std::string outString);

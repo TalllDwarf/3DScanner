@@ -20,7 +20,7 @@ public:
 	GLuint vboId;
 	GLuint cboId;
 
-	unsigned long long int point_size;
+	GLsizei point_size = 0;
 
 	void Dispose() const
 	{

@@ -30,6 +30,14 @@ class ModelCapture
 	ScanSettings scan_settings_;
 
 	void RenderToTexture(float angle, float x, float y, float z) const;
+
+	//Capturing model
+	bool capturing = false;
+
+	//Connected to serial connection
+	bool connected = false;
+
+	bool motorBusy = false;
 	
 public:
 
@@ -40,5 +48,5 @@ public:
 	
 	void Render(float angle, float x, float y, float z);
 
-	void ModelGatherTick();
+	void ModelGatherTick(float time);
 };

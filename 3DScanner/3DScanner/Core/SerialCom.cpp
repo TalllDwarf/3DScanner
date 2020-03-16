@@ -25,54 +25,17 @@ void SerialCom::SearchForAvailablePorts()
 
 void SerialCom::ShowError()
 {
-	wchar_t lastError[1024];
+	char lastError[1024];
 	FormatMessage(
 		FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-		NULL,
+		nullptr,
 		GetLastError(),
 		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
 		lastError,
 		1024,
-		NULL);
+		nullptr);
 
 	//TODO:Display error
-}
-
-bool SerialCom::CheckAuthCode()
-{
-	char readCode[AUTH_SIZE] = { 0 };
-	int i = 0; 
-	char c;
-
-	while (i < 3)
-	{
-		while (!DataAvailable() && i < AUTH_SIZE)
-		{}
-
-		while (DataInBuffer() && i < AUTH_SIZE)
-		{
-			c = GetCharFromBuffer();
-			
-			if (c != '\0')
-			{
-				readCode[i] = c;
-				i++;
-			}
-		}
-	}
-
-	bool authOkay = true;
-
-	for (int i = 0; i < AUTH_SIZE; ++i)
-	{
-		if (readCode[i] != authCode[i])
-		{
-			authOkay = false;
-			break;
-		}
-	}
-
-	return authOkay;
 }
 
 SerialCom::SerialCom() : serialHandle(nullptr)
@@ -146,11 +109,7 @@ bool SerialCom::OpenPort(std::string comPort, int baudRate)
 		return false;
 	}
 
-	if (WriteChar('T'))
-	{
-		return CheckAuthCode();
-	}
-	else return false;
+	return true;
 }
 
 void SerialCom::ClosePort()
@@ -178,12 +137,12 @@ bool SerialCom::DataAvailable()
 	return (bytesRead > 0);
 }
 
-bool SerialCom::DataInBuffer()
+bool SerialCom::DataInBuffer() const
 {
 	return readBuffer.size() > 0;
 }
 
-std::vector<std::string> SerialCom::GetAvailablePorts()
+std::vector<std::string> SerialCom::GetAvailablePorts() const
 {
 	return availableComs;
 }
@@ -200,7 +159,7 @@ char SerialCom::GetCharFromBuffer()
 	return c;
 }
 
-std::string SerialCom::GetReadBuffer()
+std::string SerialCom::GetReadBuffer() const
 {
 	return readBuffer;
 }
@@ -218,7 +177,7 @@ bool SerialCom::WriteChar(char outChar)
 	return true;
 }
 
-bool SerialCom::WriteString(std::string outString)
+bool SerialCom::WriteString(const std::string outString)
 {
 	DWORD bytesWritten = 0;
 
