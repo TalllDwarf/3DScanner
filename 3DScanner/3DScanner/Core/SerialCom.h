@@ -1,8 +1,13 @@
 #pragma once
 #include <vector>
 #include <string>
+#include <future>
 #include <Windows.h>
 #include <Winbase.h>
+
+//Windows defines min max breaks CGAL library
+#undef max;
+#undef min;
 
 #define BUFFER_SIZE 255
 #define AUTH_SIZE 3
@@ -27,6 +32,12 @@ public:
 	[[nodiscard]] bool OpenPort(std::string comPort, int baudRate = CBR_9600);
 	void ClosePort();
 
+	template<typename T>
+	static bool is_Ready(std::future<T> const& f)
+	{
+		return f.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+	}
+	
 	[[nodiscard]] bool DataAvailable();
 	[[nodiscard]] bool DataInBuffer() const;
 
@@ -37,7 +48,7 @@ public:
 	char GetCharFromBuffer();
 	std::string GetReadBuffer() const;
 
-	bool WriteChar(char outChar);
-	bool WriteString(std::string outString);
+	bool WriteChar(char outChar) const;
+	bool WriteString(std::string outString) const;
 
 };

@@ -132,14 +132,14 @@ bool SerialCom::DataAvailable()
 		return false;
 	}
 
-	readBuffer = std::string(&buffer[0], (size_t)bytesRead);
+	readBuffer = std::string(&buffer[0], static_cast<size_t>(bytesRead));
 
 	return (bytesRead > 0);
 }
 
 bool SerialCom::DataInBuffer() const
 {
-	return readBuffer.size() > 0;
+	return !readBuffer.empty();
 }
 
 std::vector<std::string> SerialCom::GetAvailablePorts() const
@@ -149,7 +149,7 @@ std::vector<std::string> SerialCom::GetAvailablePorts() const
 
 char SerialCom::GetCharFromBuffer()
 {
-	if (readBuffer.size() == 0)
+	if (readBuffer.empty())
 		return '\0';
 
 	char c = readBuffer[0];
@@ -164,7 +164,7 @@ std::string SerialCom::GetReadBuffer() const
 	return readBuffer;
 }
 
-bool SerialCom::WriteChar(char outChar)
+bool SerialCom::WriteChar(char outChar) const
 {
 	DWORD bytesWritten = 0;
 
@@ -177,7 +177,7 @@ bool SerialCom::WriteChar(char outChar)
 	return true;
 }
 
-bool SerialCom::WriteString(const std::string outString)
+bool SerialCom::WriteString(const std::string outString) const
 {
 	DWORD bytesWritten = 0;
 

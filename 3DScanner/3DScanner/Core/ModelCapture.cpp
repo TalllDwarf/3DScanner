@@ -1,8 +1,56 @@
 #include "ModelCapture.h"
-
 #include <cmath>
-
 #include "imgui.h"
+
+#include <CGAL/wlop_simplify_and_regularize_point_set.h>
+#include <CGAL/property_map.h>
+#include <CGAL/IO/write_ply_points.h>
+
+
+void ModelCapture::GetCameraFrame()
+{
+	const ModelShot* current_shot = camera_->GetCurrentModelShot();
+
+	CGAL_Model shot;
+
+	for (int i = 0; i < (DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT); ++i)
+	{
+		if (current_shot->xyz[i].Z >= scan_settings_.minDistance &&
+			current_shot->xyz[i].Z <= scan_settings_.maxDistance)
+		{
+			shot.AddPoint(
+				Point(
+				current_shot->xyz[i].X,
+				current_shot->xyz[i].Y,
+				current_shot->xyz[i].Z),
+				Color(
+				current_shot->rgbimage[(i * 4)],
+				current_shot->rgbimage[(i * 4) + 1],
+				current_shot->rgbimage[(i * 4) + 2]
+				));
+		}
+	}
+
+	CGAL_Model output;
+	CGAL::wlop_simplify_and_regularize_point_set<CGAL::Sequential_tag>
+		(shot.xyz,
+			std::back_inserter(output.xyz),
+			CGAL::parameters::select_percentage(scan_settings_.retainPercentage).
+			neighbor_radius(scan_settings_.neighborRadius));
+
+	//Add the colour to the output
+	for(auto xyz : output.xyz)
+	{
+		auto it = std::find(shot.xyz.begin(), shot.xyz.end(), xyz);
+
+		if(it != shot.xyz.end())
+		{
+			output.rgb.push_back(shot.rgb[std::distance(shot.xyz.begin(), it)]);
+		}
+	}
+
+	currentModel.push_back(output);
+}
 
 ModelCapture::ModelCapture(Camera* camera) : camera_(camera), fileDialog(ImGuiFileBrowserFlags_EnterNewFilename)
 {
@@ -61,20 +109,20 @@ void ModelCapture::RenderToTexture(float angle, float x, float y, float z) const
 	glEnableClientState(GL_VERTEX_ARRAY);
 	glEnableClientState(GL_COLOR_ARRAY);
 
-	if (currentModel != nullptr && modelSize != 0)
+	if (!currentModel.empty())
 	{
-		for (int i = 0; i < modelSize; ++i)
+		for (int i = 0; i < currentModel.size(); ++i)
 		{
-			if (currentModel->point_size > 0)
+			if (!currentModel[i].xyz.empty())
 			{
-				glBindBuffer(GL_ARRAY_BUFFER, (currentModel + i)->vboId);
+				glBindBuffer(GL_ARRAY_BUFFER, currentModel[i].vboId);
 				glVertexPointer(3, GL_FLOAT, 0, nullptr);
 
-				glBindBuffer(GL_ARRAY_BUFFER, (currentModel + i)->cboId);
+				glBindBuffer(GL_ARRAY_BUFFER, currentModel[i].cboId);
 				glColorPointer(3, GL_FLOAT, 0, nullptr);
 
 				glPointSize(1.f);
-				glDrawArrays(GL_POINTS, 0, currentModel->point_size);
+				glDrawArrays(GL_POINTS, 0, currentModel[i].xyz.size());
 			}
 		}
 	}
@@ -120,7 +168,14 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 				{
 					std::string port(R"(\\.\)");
 					port += serialPort;
-					connected = serial_com_.OpenPort(port);
+					if (serial_com_.OpenPort(port))
+					{
+						connected = true;
+						serialInFuture = std::async(std::launch::async, &SerialCom::DataAvailable, &serial_com_);
+					}
+					else
+						connected = false;
+					
 				}
 			}
 			else
@@ -129,14 +184,41 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 				{
 					ImGui::TextColored(ImVec4(1,0,0,1),"Motor Busy!");
 				}
-				
-				if(ImGui::Button("Single Turn"))
+
+				if (!motorBusy)
 				{
-					serial_com_.WriteChar('I');
-					motorBusy = true;
-				}				
-				
-				if(ImGui::Button("Disconnect"))
+					if (ImGui::Button("Single Turn"))
+					{
+						//Reset turntable
+						serial_com_.WriteChar('R');
+
+						//We are changing the number of turns we need
+						serial_com_.WriteChar('T');
+
+						//Set number of Images
+						serial_com_.WriteChar(static_cast<char>(scan_settings_.numberOfImages));
+
+						//Do a single turn
+						serial_com_.WriteChar('I');
+						motorBusy = true;
+					}
+
+					if(ImGui::Button("Start Scan"))
+					{
+						//Reset turntable
+						serial_com_.WriteChar('R');
+
+						//We are changing the number of turns we need
+						serial_com_.WriteChar('T');
+						
+						//Set number of Images
+						serial_com_.WriteChar(static_cast<char>(scan_settings_.numberOfImages));
+
+						capturing = true;
+					}
+				}
+
+				if (ImGui::Button("Disconnect"))
 				{
 					serial_com_.ClosePort();
 					connected = false;
@@ -148,22 +230,15 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 
 			if (ImGui::Button("Start"))
 			{
-				if (currentModel != nullptr)
-				{
-					for (int i = 0; i < modelSize; ++i)
-					{
-						(currentModel + i)->Dispose();
-					}
-
-					delete[] currentModel;
-				}
+				if (!currentModel.empty())
+					 currentModel.clear();
 
 				//Create a model shot for each shot
-				currentModel = new ModelShot[scan_settings_.numberOfImages];
+				currentModel.reserve(scan_settings_.numberOfImages);
 				capturing = true;
 			}
 
-			if (currentModel != nullptr)
+			if (!currentModel.empty())
 			{
 				RenderToTexture(angle, x, y, z);
 
@@ -181,7 +256,7 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 
 				if (ImGui::Button("Export"))
 				{
-
+					//TODO:Export model
 				}
 			}
 		}
@@ -196,20 +271,40 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 
 void ModelCapture::ModelGatherTick(float time)
 {
-	char c = serial_com_.GetCharFromBuffer();
+	if (!connected)
+		return;
 
-	if(c == 'D')
+	if (serialInFuture.valid() && SerialCom::is_Ready(serialInFuture))
 	{
-		motorBusy = false;
-	}
-	//Finished all rotation
-	else if(c == 'F')
-	{
-		motorBusy = false;
-	}
-	
-	if(capturing)
-	{
+		if (serialInFuture.get())
+		{
+			char c = serial_com_.GetCharFromBuffer();
+
+			while (c != '\0')
+			{
+				if (c == 'D')
+				{
+					motorBusy = false;
+				}
+				else if (capturing && !motorBusy)
+				{
+					GetCameraFrame();
+					serial_com_.WriteChar('S');
+					motorBusy = true;
+				}
+				//Finished all rotation
+				else if (c == 'F')
+				{
+					motorBusy = false;
+					capturing = false;
+
+					GetCameraFrame();
+				}
+
+				c = serial_com_.GetCharFromBuffer();
+			}
+		}
 		
-	}	
+		serialInFuture = std::async(std::launch::async, &SerialCom::DataAvailable, &serial_com_);
+	}
 }

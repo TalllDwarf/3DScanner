@@ -79,6 +79,9 @@ void loop()
       case 'r':
       case 'R':
         currentStep = 0;
+        lcd.setCursor(0,1);
+        sprintf(line1, "Reset       ");
+        lcd.print(line1); 
       break;
 
       case 'i':
@@ -88,6 +91,9 @@ void loop()
         StopStepper();
         delay(10);
         Serial.write('D');
+        lcd.setCursor(0,1);
+        sprintf(line1, "Single Step ");
+        lcd.print(line1); 
       break;
 
       case 't':
@@ -130,9 +136,9 @@ void loop()
         stepper.setSpeed(abs(steps));
 
         if(steps > 0)
-          stepper.step(200);
+          stepper.step(10);
         else
-          stepper.step(200);
+          stepper.step(-10);
 
         X = analogRead(XPIN);
         X = min(1024, (X + 10));
