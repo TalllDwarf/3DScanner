@@ -33,6 +33,10 @@ public:
 class Camera
 {
 	// Intermediate Buffers
+
+	int frameID = 0;
+
+	bool depthReady = false, colorReady = false;
 	
 	//ColorSpacePoint* depth2rgb; //[DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT];             // Maps depth pixels to rgb pixels
 	//CameraSpacePoint* depth2xyz; //[DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT] ;			 // Maps depth pixels to 3d coordinates
@@ -57,6 +61,8 @@ public:
 
 	bool Init();
 	void GetKinectData();
+
+	int GetFrameID() const;
 	
 	void RenderToTexture(float angle, float x, float y, float z) const;
 	GLuint* GetTexture();

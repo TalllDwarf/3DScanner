@@ -3,57 +3,129 @@
 #include "imgui.h"
 
 #include <CGAL/wlop_simplify_and_regularize_point_set.h>
-#include <CGAL/property_map.h>
 #include <CGAL/IO/write_ply_points.h>
 
+#include <opencv2/imgproc.hpp>
+#include <opencv2/video.hpp>
+
+#define BACK_SUB_AMOUNT 100
+
+//TODO:CLIP CUBE
 
 void ModelCapture::GetCameraFrame()
 {
 	const ModelShot* current_shot = camera_->GetCurrentModelShot();
 
+	if (!current_shot)
+		return;
+	
 	CGAL_Model shot;
 
+	cv::Mat imageMat;
+	
+
+	if (hasIgnore)
+	{		
+		imageMat = cv::Mat(RGB_SENSOR_WIDTH * 4, RGB_SENSOR_HEIGHT, CV_8UC1, current_shot->rgbimage);
+		
+		scan_settings_.backSub->apply(imageMat, scan_settings_.ignoreMask, 0);
+	}
+		
+	//Create list
 	for (int i = 0; i < (DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT); ++i)
 	{
+		ColorSpacePoint p = current_shot->rgb[i];
+		int idx = static_cast<int>(p.X) + RGB_SENSOR_WIDTH * static_cast<int>(p.Y);
+
+		if (p.X < 0 || p.Y < 0 || p.X > RGB_SENSOR_WIDTH || p.Y > RGB_SENSOR_HEIGHT && (idx > 2073596))
+			continue;
+		
 		if (current_shot->xyz[i].Z >= scan_settings_.minDistance &&
-			current_shot->xyz[i].Z <= scan_settings_.maxDistance)
+			current_shot->xyz[i].Z <= scan_settings_.maxDistance && (!hasIgnore ||				
+			(scan_settings_.ignoreMask.at<unsigned char>(idx * 4) > BACK_SUB_AMOUNT ||
+				scan_settings_.ignoreMask.at<unsigned char>(idx * 4 + 1) > BACK_SUB_AMOUNT ||
+				scan_settings_.ignoreMask.at<unsigned char>(idx * 4 + 2) > BACK_SUB_AMOUNT)))
 		{
 			shot.AddPoint(
-				Point(
-				current_shot->xyz[i].X,
-				current_shot->xyz[i].Y,
-				current_shot->xyz[i].Z),
-				Color(
-				current_shot->rgbimage[(i * 4)],
-				current_shot->rgbimage[(i * 4) + 1],
-				current_shot->rgbimage[(i * 4) + 2]
+				glm::vec3(
+					current_shot->xyz[i].X,
+					current_shot->xyz[i].Y,
+					current_shot->xyz[i].Z),
+				glm::vec3(
+					current_shot->rgbimage[(4 * idx)],
+					current_shot->rgbimage[(4 * idx) + 1],
+					current_shot->rgbimage[(4 * idx) + 2]
 				));
 		}
 	}
 
-	CGAL_Model output;
-	CGAL::wlop_simplify_and_regularize_point_set<CGAL::Sequential_tag>
-		(shot.xyz,
-			std::back_inserter(output.xyz),
-			CGAL::parameters::select_percentage(scan_settings_.retainPercentage).
-			neighbor_radius(scan_settings_.neighborRadius));
+	//If we didn't get any points separate
+	if (shot.vertex.empty())
+		return;
+	
+	currentModel.push_back(std::move(shot));
+	
+	//CGAL_Model output;
+	//CGAL::wlop_simplify_and_regularize_point_set<CGAL::Sequential_tag>
+	//	(shot.xyz,
+	//		std::back_inserter(output.xyz),
+	//		CGAL::parameters::select_percentage(scan_settings_.retainPercentage).
+	//		neighbor_radius(scan_settings_.neighborRadius));
 
-	//Add the colour to the output
-	for(auto xyz : output.xyz)
+	////Add the colour to the output
+	//for(auto xyz : output.xyz)
+	//{
+	//	auto it = std::find(shot.xyz.begin(), shot.xyz.end(), xyz);
+
+	//	if(it != shot.xyz.end())
+	//	{
+	//		output.rgb.push_back(shot.rgb[std::distance(shot.xyz.begin(), it)]);
+	//	}
+	//}
+
+	//currentModel.push_back(output);
+}
+
+void ModelCapture::GetIgnoreFrame()
+{
+	const ModelShot* current_shot = camera_->GetCurrentModelShot();
+
+	if (!current_shot)
+		return;
+
+	memcpy(scan_settings_.rgbIgnoreImage, current_shot->rgbimage, (RGB_SENSOR_WIDTH * RGB_SENSOR_HEIGHT * 4));
+	scan_settings_.ignoreMat = cv::Mat(RGB_SENSOR_WIDTH * 4, RGB_SENSOR_HEIGHT, CV_8UC1, scan_settings_.rgbIgnoreImage);
+	scan_settings_.ignoreMask = cv::Mat(RGB_SENSOR_WIDTH * 4, RGB_SENSOR_HEIGHT, CV_8UC1);
+
+	scan_settings_.backSub = cv::createBackgroundSubtractorMOG2(1000, 100, false);
+	scan_settings_.backSub->apply(scan_settings_.ignoreMat, scan_settings_.ignoreMask, 1);
+
+	scan_settings_.currentIgnoreFrame = 0;
+	lastIgnoreFrameID = camera_->GetFrameID();
+
+	hasIgnore = true;
+}
+
+void ModelCapture::AddIgnoreFrame()
+{
+	if (lastIgnoreFrameID != camera_->GetFrameID())
 	{
-		auto it = std::find(shot.xyz.begin(), shot.xyz.end(), xyz);
+		const ModelShot* current_shot = camera_->GetCurrentModelShot();
 
-		if(it != shot.xyz.end())
-		{
-			output.rgb.push_back(shot.rgb[std::distance(shot.xyz.begin(), it)]);
-		}
-	}
-
-	currentModel.push_back(output);
+		if (!current_shot)
+			return;
+		
+		scan_settings_.currentIgnoreFrame++;
+		
+		cv::Mat imageMat = cv::Mat(RGB_SENSOR_WIDTH * 4, RGB_SENSOR_HEIGHT, CV_8UC1, current_shot->rgbimage);
+		scan_settings_.backSub->apply(imageMat, scan_settings_.ignoreMask);
+	}	
 }
 
 ModelCapture::ModelCapture(Camera* camera) : camera_(camera), fileDialog(ImGuiFileBrowserFlags_EnterNewFilename)
 {
+	scan_settings_.rgbIgnoreImage = new unsigned char[RGB_SENSOR_WIDTH * RGB_SENSOR_HEIGHT * 4];
+	
 	serial_com_.SearchForAvailablePorts();
 
 	if (!serial_com_.GetAvailablePorts().empty())
@@ -62,41 +134,45 @@ ModelCapture::ModelCapture(Camera* camera) : camera_(camera), fileDialog(ImGuiFi
 	fileDialog.SetTitle("Save mesh to");
 }
 
+ModelCapture::~ModelCapture()
+{
+	delete[] scan_settings_.rgbIgnoreImage;
+}
+
 bool ModelCapture::Init()
 {
 	glGenFramebuffers(1, &modelFrameBuffer);
 	glBindFramebuffer(GL_FRAMEBUFFER, modelFrameBuffer);
-
-	glGenTextures(1, modelTexture);
-
-	glBindTexture(GL_TEXTURE_2D, *modelTexture);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, RGB_SENSOR_WIDTH, RGB_SENSOR_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+	
+	glGenTextures(1, &modelTexture);
+	
+	glBindTexture(GL_TEXTURE_2D, modelTexture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, DEPTH_SENSOR_WIDTH, DEPTH_SENSOR_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
 	glGenRenderbuffers(1, &modelBuffer);
 	glBindRenderbuffer(GL_RENDERBUFFER, modelBuffer);
-	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, RGB_SENSOR_WIDTH, RGB_SENSOR_HEIGHT);
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, DEPTH_SENSOR_WIDTH, DEPTH_SENSOR_HEIGHT);
 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, modelBuffer);
 
-	glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, *modelTexture, 0);
-	GLenum DrawBuffers[1] = { GL_COLOR_ATTACHMENT0 };
-	glDrawBuffers(1, DrawBuffers);
+	glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, modelTexture, 0);
+	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 
 	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-		return false;
-
+		return false; 
+	
 	return true;	
 }
 
 void ModelCapture::RenderToTexture(float angle, float x, float y, float z) const
 {
 	glBindFramebuffer(GL_FRAMEBUFFER, modelBuffer);
-	glViewport(0, 0, RGB_SENSOR_WIDTH, RGB_SENSOR_HEIGHT);
-
+	glViewport(0, 0, DEPTH_SENSOR_WIDTH, DEPTH_SENSOR_HEIGHT);
+	
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
-	gluPerspective(80, RGB_SENSOR_WIDTH / static_cast<GLdouble>(RGB_SENSOR_HEIGHT), 0.1, 1000);
+	gluPerspective(80, DEPTH_SENSOR_WIDTH / static_cast<GLdouble>(DEPTH_SENSOR_HEIGHT), 0.1, 1000);
 
 	const float eyex = 1 * cos(angle);// -z * sin(angle) + x;
 	const float eyey = 1 * sin(angle);// +z * cos(angle) + z;
@@ -106,31 +182,41 @@ void ModelCapture::RenderToTexture(float angle, float x, float y, float z) const
 	gluLookAt(x, y, z, x + eyex, y, z + eyey, 0, y, 0);
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	glEnableClientState(GL_VERTEX_ARRAY);
-	glEnableClientState(GL_COLOR_ARRAY);
+
+	glPointSize(1.0f);
+	glBegin(GL_POINTS);
 
 	if (!currentModel.empty())
 	{
-		for (int i = 0; i < currentModel.size(); ++i)
+		for (const auto& model : currentModel)
 		{
-			if (!currentModel[i].xyz.empty())
+			if (!model.vertex.empty())
 			{
-				glBindBuffer(GL_ARRAY_BUFFER, currentModel[i].vboId);
-				glVertexPointer(3, GL_FLOAT, 0, nullptr);
-
-				glBindBuffer(GL_ARRAY_BUFFER, currentModel[i].cboId);
-				glColorPointer(3, GL_FLOAT, 0, nullptr);
-
-				glPointSize(1.f);
-				glDrawArrays(GL_POINTS, 0, currentModel[i].xyz.size());
+				for(Vertex v : model.vertex)
+				{
+					glColor3ub(v.color.r, v.color.g, v.color.b);
+					glVertex3d(v.pos.x, v.pos.y, v.pos.z);
+				}
 			}
 		}
 	}
-		
-	glDisableClientState(GL_VERTEX_ARRAY);
-	glDisableClientState(GL_COLOR_ARRAY);
+
+	glEnd();
+	glFlush();
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void ModelCapture::RenderToTexturePreview(float angle, float x, float y, float z)
+{
+	if (lastFrameID != camera_->GetFrameID())
+	{
+		currentModel.clear();
+		GetCameraFrame();
+
+		RenderToTexture(angle, x, y, z);		
+		lastFrameID = camera_->GetFrameID();
+	}
 }
 
 void ModelCapture::Render(float angle, float x, float y, float z)
@@ -146,6 +232,17 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 			//20-255 images to generate model
 			//
 
+			ImGui::DragInt("Number of Images:", &scan_settings_.numberOfImages, 1, 20, 255);
+			ImGui::DragFloat("Min Distance:", &scan_settings_.minDistance, 0.01f, 0.0f, 10.0f);
+			ImGui::DragFloat("Max Distance:", &scan_settings_.maxDistance, 0.01f, 0.0f, 10.0f);
+
+			if (ImGui::Button("Take Ignore Shot"))
+			{
+				GetIgnoreFrame();
+			}
+
+			ImGui::Separator();
+			
 			if (!connected)
 			{
 				if (ImGui::BeginCombo("Serial Port:", serialPort.c_str()))
@@ -225,22 +322,42 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 					motorBusy = false;
 				}
 			}
-				
-			ImGui::DragInt("Number of Images:", &scan_settings_.numberOfImages, 1, 20, 255);
+			
 
 			if (ImGui::Button("Start"))
 			{
-				if (!currentModel.empty())
-					 currentModel.clear();
-
+				if (!currentModel.empty())				
+					currentModel.clear();
+					
 				//Create a model shot for each shot
 				currentModel.reserve(scan_settings_.numberOfImages);
 				capturing = true;
 			}
 
-			if (!currentModel.empty())
+			if (!currentModel.empty() && capturing)
 			{
 				RenderToTexture(angle, x, y, z);
+
+				//if (ImGui::Begin("Model"))
+				//{
+				//	ImVec2 vMin = ImGui::GetWindowContentRegionMin();
+				//	ImVec2 vMax = ImGui::GetWindowContentRegionMax();
+
+				//	ImVec2 size(vMax.x - vMin.x, vMax.y - vMin.y);
+
+				//	ImGui::Image(reinterpret_cast<void*>(modelTexture), size, ImVec2(0, 1), ImVec2(1, 0));
+				//}
+				//ImGui::End();
+
+
+				if (ImGui::Button("Export"))
+				{
+					//TODO:Export model
+				}
+			}
+			else
+			{
+				RenderToTexturePreview(angle, x, y, z);
 
 				if (ImGui::Begin("Model"))
 				{
@@ -250,14 +367,12 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 					ImVec2 size(vMax.x - vMin.x, vMax.y - vMin.y);
 
 					ImGui::Image(reinterpret_cast<void*>(modelTexture), size, ImVec2(0, 1), ImVec2(1, 0));
+
+					ImGui::Separator();
+
+					
 				}
 				ImGui::End();
-
-
-				if (ImGui::Button("Export"))
-				{
-					//TODO:Export model
-				}
 			}
 		}
 		ImGui::End();
@@ -271,6 +386,9 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 
 void ModelCapture::ModelGatherTick(float time)
 {
+	if (hasIgnore && scan_settings_.ignoreFrames >= scan_settings_.currentIgnoreFrame)
+		AddIgnoreFrame();
+	
 	if (!connected)
 		return;
 

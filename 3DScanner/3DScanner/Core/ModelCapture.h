@@ -1,8 +1,10 @@
 #pragma once
 #include <GL/glew.h>
 #include <vector>
-#include <thread>
 #include <future>
+
+#include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 #include "Camera.h"
 #include "imfilebrowser.h"
@@ -11,6 +13,9 @@
 #define CGAL_NO_GMP 1
 
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
+#include <opencv2/core/mat.hpp>
+#include <opencv2/video/background_segm.hpp>
+#include <SDL/SDL.h>
 
 #define SERIAL_DELAY 2.f
 
@@ -18,36 +23,39 @@
 typedef CGAL::Exact_predicates_inexact_constructions_kernel Kernel;
 typedef Kernel::Point_3 Point;
 typedef Kernel::Vector_3 Vector;
-typedef Kernel::Point_3 Color;
 
 struct ScanSettings
 {
 	int numberOfImages = 30;
 	float minDistance = 1.0f;
-	float maxDistance = 1000.0f;
+	float maxDistance = 10.0f;
 
-	//WLOP processing
-	float retainPercentage = 100;
-	float neighborRadius = 0.5f;
 	
+	int ignoreFrames = 10;
+	int currentIgnoreFrame = 10;
 	
-	std::vector<Point> ignoreShot; 
+	cv::Mat ignoreMat;
+	cv::Mat ignoreMask;
+	cv::Ptr<cv::BackgroundSubtractor> backSub;
+	unsigned char* rgbIgnoreImage; //[RGB_SENSOR_WIDTH * RGB_SENSOR_HEIGHT * 4];
 };
 
+struct Vertex
+{
+	glm::vec3 pos;
+	glm::vec3 color;
+
+	Vertex(glm::vec3 xyz, glm::vec3 rgb) : pos(xyz), color(rgb)
+	{}
+};
 
 struct CGAL_Model
 {
-	std::vector<Point> xyz;
-	std::vector<Color> rgb;
-
-	// We'll be using buffer objects to store the kinect point cloud
-	GLuint vboId;
-	GLuint cboId;
+	std::vector<Vertex> vertex;
 	
-	void AddPoint(Point point, Color color)
+	void AddPoint(glm::vec3 point, glm::vec3 color)
 	{
-		xyz.push_back(point);
-		rgb.push_back(color);
+		vertex.emplace_back(point, color);
 	}
 };
 
@@ -56,7 +64,7 @@ class ModelCapture
 {
 	//Model buffer
 	GLuint modelFrameBuffer = 0;
-	GLuint* modelTexture;
+	GLuint modelTexture;
 	GLuint modelBuffer;
 
 	//Camera that contains 
@@ -72,7 +80,9 @@ class ModelCapture
 	
 	//Model
 	std::vector<CGAL_Model> currentModel;
-	CGAL_Model ignoreModel;
+	bool hasIgnore;
+	int lastFrameID = -1;
+	int lastIgnoreFrameID = -1;
 
 	//Settings
 	ScanSettings scan_settings_;
@@ -80,7 +90,8 @@ class ModelCapture
 	ImGui::FileBrowser fileDialog;
 
 	void RenderToTexture(float angle, float x, float y, float z) const;
-
+	void RenderToTexturePreview(float angle, float x, float y, float z);
+	
 	//Capturing model
 	bool capturing = false;
 
@@ -91,9 +102,15 @@ class ModelCapture
 	//Gets the frame from the camera ignoring points outside of the Scan Settings
 	void GetCameraFrame();
 
+	void GetIgnoreFrame();
+
+	//Add multiple ignore frames together to get a better comparison
+	void AddIgnoreFrame();
+
 public:
 
 	ModelCapture(Camera* camera);
+	~ModelCapture();
 
 	bool Init();
 	

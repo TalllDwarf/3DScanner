@@ -97,7 +97,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <AdditionalDependencies>freetype.lib;opengl32.lib;glew32d.lib;gdi32.lib;glu32.lib;SDL2.lib;SDL2main.lib;kinect20.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>freetype.lib;opengl32.lib;glew32d.lib;gdi32.lib;glu32.lib;SDL2.lib;SDL2main.lib;kinect20.lib;opencv_world420.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>

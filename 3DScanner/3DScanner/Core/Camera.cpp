@@ -9,6 +9,8 @@ void Camera::GetKinectData()
 {
 	IMultiSourceFrame* frame = NULL;
 	if (SUCCEEDED(reader->AcquireLatestFrame(&frame))) {
+		frameID++;
+		
 		GLubyte* ptr;
 		
 		glBindBuffer(GL_ARRAY_BUFFER, modelShot.vboId);
@@ -29,6 +31,11 @@ void Camera::GetKinectData()
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, RGB_SENSOR_WIDTH, RGB_SENSOR_HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, static_cast<GLvoid*>(modelShot.rgbimage));
 	}
 	if (frame) frame->Release();
+}
+
+int Camera::GetFrameID() const
+{
+	return frameID;
 }
 
 
@@ -59,6 +66,8 @@ void Camera::GetDepthData(IMultiSourceFrame* frame, GLubyte* dest)
 	// Fill in depth2rgb map
 	mapper->MapDepthFrameToColorSpace(DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT, buf, DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT, modelShot.rgb);
 	if (depthframe) depthframe->Release();
+
+	depthReady = true;
 }
 
 void Camera::GetRgbData(IMultiSourceFrame* frame, GLubyte* dest)
@@ -93,6 +102,8 @@ void Camera::GetRgbData(IMultiSourceFrame* frame, GLubyte* dest)
 		// Don't copy alpha channel
 	}
 	if (colorframe) colorframe->Release();
+
+	colorReady = true;
 }
 
 void Camera::RenderToTexture(float angle, float x, float y, float z) const
@@ -139,6 +150,9 @@ GLuint* Camera::GetTexture()
 
 const ModelShot* Camera::GetCurrentModelShot() const
 {
+	if (!depthReady || !colorReady)
+		return nullptr;
+	
 	return &modelShot;
 }
 
@@ -178,8 +192,7 @@ bool Camera::Init()
 		glGenFramebuffers(1, &kinectFrameBuffer);
 		glBindFramebuffer(GL_FRAMEBUFFER, kinectFrameBuffer);
 
-		//Create texutre to render to
-		
+		//Create texutre to render to		
 		glGenTextures(2, kinectTexture);
 
 		glBindTexture(GL_TEXTURE_2D, kinectTexture[0]);
@@ -195,13 +208,12 @@ bool Camera::Init()
 		//Kinect depth buffer
 		glGenRenderbuffers(1, &kinectDepthBuffer);
 		glBindRenderbuffer(GL_RENDERBUFFER, kinectDepthBuffer);
-		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, RGB_SENSOR_WIDTH, RGB_SENSOR_HEIGHT);
+		glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, DEPTH_SENSOR_WIDTH, DEPTH_SENSOR_HEIGHT);
 		glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, kinectDepthBuffer);
 
 		//Set kinect texture to buffer
 		glFramebufferTexture(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, kinectTexture[0], 0);
-		GLenum DrawBuffers[1] = { GL_COLOR_ATTACHMENT0};
-		glDrawBuffers(1, DrawBuffers);
+		glDrawBuffer(GL_COLOR_ATTACHMENT0);
 		
 
 		//Check the frame buffer

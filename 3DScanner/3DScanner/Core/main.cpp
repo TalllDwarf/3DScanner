@@ -95,7 +95,7 @@ int SDL_main(int, char**)
 	ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
 	ImGui_ImplOpenGL3_Init(glsl_version);
 
-	const ImVec4 clear_color = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
+	const ImVec4 clear_color = ImVec4(1.f, 1.f, 1.f, 1.00f);
 
 	// Main loop
 	bool done = false;
@@ -103,14 +103,15 @@ int SDL_main(int, char**)
 	Camera kinect;
 	if (!kinect.Init())
 		return EXIT_FAILURE;
-
+	
 	ModelCapture capture(&kinect);
+	if (!capture.Init())
+		return EXIT_FAILURE;
 
 	float preview_angle = 1;
 	float preview_xyz[3] = {0.0f, 0.001f, 0.0f};
-	float model_angle = 1;
-	float model_xyz[3] = {0.0f, 0.001f, 0.0f};
 
+	//Frame delta time
 	Uint64 NOW = SDL_GetPerformanceCounter();
 	Uint64 LAST = 0;
 	float deltaTime = 0;
@@ -153,7 +154,7 @@ int SDL_main(int, char**)
 		
 		if(ImGui::Begin("Point Cloud"))
 		{			
-			ImGui::Image(reinterpret_cast<void*>(kinect.GetTexture()[0]),size, ImVec2(0, 1), ImVec2(1, 0));
+			ImGui::Image(reinterpret_cast<void*>(kinect.GetTexture()[0]), size, ImVec2(0, 1), ImVec2(1, 0));
 
 			ImGui::Separator();
 			
@@ -168,7 +169,7 @@ int SDL_main(int, char**)
 		}
 		ImGui::End();
 
-		capture.Render(model_angle, model_xyz[0], model_xyz[1], model_xyz[2]);
+		capture.Render(preview_angle, preview_xyz[0], preview_xyz[1], preview_xyz[2]);
 		capture.ModelGatherTick(deltaTime);
 
 		// Rendering
