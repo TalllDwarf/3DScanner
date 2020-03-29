@@ -21,13 +21,9 @@ void ModelCapture::GetCameraFrame()
 	
 	CGAL_Model shot;
 
-	cv::Mat imageMat;
-	
-
 	if (hasIgnore)
 	{		
-		imageMat = cv::Mat(RGB_SENSOR_WIDTH * 4, RGB_SENSOR_HEIGHT, CV_8UC1, current_shot->rgbimage);
-		
+		cv::Mat imageMat = cv::Mat(RGB_SENSOR_WIDTH * 4, RGB_SENSOR_HEIGHT, CV_8UC1, current_shot->rgbimage);
 		scan_settings_.backSub->apply(imageMat, scan_settings_.ignoreMask, 0);
 	}
 		
@@ -39,12 +35,30 @@ void ModelCapture::GetCameraFrame()
 
 		if (p.X < 0 || p.Y < 0 || p.X > RGB_SENSOR_WIDTH || p.Y > RGB_SENSOR_HEIGHT && (idx > 2073596))
 			continue;
+
+		float cubeMin[3];
+		float cubeMax[3];
+
+		cubeMin[0] = ((-0.1f * scan_settings_.cubeScale[0]) + scan_settings_.cubePos[0]);
+		cubeMin[1] = ((-0.1f * scan_settings_.cubeScale[1]) + scan_settings_.cubePos[1]);
+		cubeMin[2] = ((-0.1f * scan_settings_.cubeScale[2]) + scan_settings_.cubePos[2]);
+
+		cubeMax[0] = ((0.1f * scan_settings_.cubeScale[0]) + scan_settings_.cubePos[0]);
+		cubeMax[1] = ((0.1f * scan_settings_.cubeScale[1]) + scan_settings_.cubePos[1]);
+		cubeMax[2] = ((0.1f * scan_settings_.cubeScale[2]) + scan_settings_.cubePos[2]);
 		
 		if (current_shot->xyz[i].Z >= scan_settings_.minDistance &&
-			current_shot->xyz[i].Z <= scan_settings_.maxDistance && (!hasIgnore ||				
+			current_shot->xyz[i].Z <= scan_settings_.maxDistance &&
+			(!hasIgnore ||				
+			//check ignore mask
 			(scan_settings_.ignoreMask.at<unsigned char>(idx * 4) > BACK_SUB_AMOUNT ||
 				scan_settings_.ignoreMask.at<unsigned char>(idx * 4 + 1) > BACK_SUB_AMOUNT ||
-				scan_settings_.ignoreMask.at<unsigned char>(idx * 4 + 2) > BACK_SUB_AMOUNT)))
+				scan_settings_.ignoreMask.at<unsigned char>(idx * 4 + 2) > BACK_SUB_AMOUNT)) &&
+			//Check Ignore cube
+				(!scan_settings_.cubeSet ||
+					(cubeMin[0] <= current_shot->xyz[i].X && cubeMax[0] >= current_shot->xyz[i].X) &&
+					(cubeMin[1] <= current_shot->xyz[i].Y && cubeMax[1] >= current_shot->xyz[i].Y) &&
+					(cubeMin[2] <= current_shot->xyz[i].Z && cubeMax[2] >= current_shot->xyz[i].Z)))
 		{
 			shot.AddPoint(
 				glm::vec3(
@@ -86,7 +100,7 @@ void ModelCapture::GetCameraFrame()
 	//currentModel.push_back(output);
 }
 
-void ModelCapture::GetIgnoreFrame()
+void ModelCapture::CreateIgnoreFrame()
 {
 	const ModelShot* current_shot = camera_->GetCurrentModelShot();
 
@@ -97,7 +111,7 @@ void ModelCapture::GetIgnoreFrame()
 	scan_settings_.ignoreMat = cv::Mat(RGB_SENSOR_WIDTH * 4, RGB_SENSOR_HEIGHT, CV_8UC1, scan_settings_.rgbIgnoreImage);
 	scan_settings_.ignoreMask = cv::Mat(RGB_SENSOR_WIDTH * 4, RGB_SENSOR_HEIGHT, CV_8UC1);
 
-	scan_settings_.backSub = cv::createBackgroundSubtractorMOG2(1000, 100, false);
+	scan_settings_.backSub = cv::createBackgroundSubtractorMOG2(scan_settings_.history, scan_settings_.varThreshold, false);
 	scan_settings_.backSub->apply(scan_settings_.ignoreMat, scan_settings_.ignoreMask, 1);
 
 	scan_settings_.currentIgnoreFrame = 0;
@@ -182,26 +196,91 @@ void ModelCapture::RenderToTexture(float angle, float x, float y, float z) const
 	gluLookAt(x, y, z, x + eyex, y, z + eyey, 0, y, 0);
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
+	
 	glPointSize(1.0f);
 	glBegin(GL_POINTS);
 
 	if (!currentModel.empty())
 	{
-		for (const auto& model : currentModel)
+		//					get angle for each image
+		float singleTurn = (360.f / scan_settings_.numberOfImages) * (glm::pi<float>() / 180.f);
+		glm::vec3 centerPoint(
+			scan_settings_.cubePos[0],
+			scan_settings_.cubePos[1],
+			scan_settings_.cubePos[2]
+		);
+		
+		//for (const auto& model : currentModel)
+		for(int i = 0; i < currentModel.size(); ++i)
 		{
-			if (!model.vertex.empty())
+			if (!currentModel.at(i).vertex.empty())
 			{
-				for(Vertex v : model.vertex)
-				{
-					glColor3ub(v.color.r, v.color.g, v.color.b);
-					glVertex3d(v.pos.x, v.pos.y, v.pos.z);
+				for(Vertex v : currentModel.at(i).vertex)
+				{					
+					Vertex rotatedV = v.RotateAroundPoint(centerPoint, singleTurn * i);
+					glColor3ub(rotatedV.color.r, rotatedV.color.g, rotatedV.color.b);
+					glVertex3f(rotatedV.pos.x, rotatedV.pos.y, rotatedV.pos.z);
 				}
 			}
 		}
 	}
-
 	glEnd();
+	
+	if(scan_settings_.showCube)
+	{		
+		glBegin(GL_LINES);
+		glColor3ub(255, 0, 0);
+
+		float cubeMin[3];
+		float cubeMax[3];
+
+		cubeMin[0] = ((-0.1f * scan_settings_.cubeScale[0]) + scan_settings_.cubePos[0]);
+		cubeMin[1] = ((-0.1f * scan_settings_.cubeScale[1]) + scan_settings_.cubePos[1]);
+		cubeMin[2] = ((-0.1f * scan_settings_.cubeScale[2]) + scan_settings_.cubePos[2]);
+
+		cubeMax[0] = ((0.1f * scan_settings_.cubeScale[0]) + scan_settings_.cubePos[0]);
+		cubeMax[1] = ((0.1f * scan_settings_.cubeScale[1]) + scan_settings_.cubePos[1]);
+		cubeMax[2] = ((0.1f * scan_settings_.cubeScale[2]) + scan_settings_.cubePos[2]);
+		
+		glVertex3f(cubeMin[0], cubeMin[1], cubeMin[2]);
+		glVertex3f(cubeMax[0], cubeMin[1], cubeMin[2]);
+
+		glVertex3f(cubeMin[0], cubeMin[1], cubeMin[2]);
+		glVertex3f(cubeMin[0], cubeMax[1], cubeMin[2]);
+
+		glVertex3f(cubeMin[0], cubeMin[1], cubeMin[2]);
+		glVertex3f(cubeMin[0], cubeMin[1], cubeMax[2]);
+
+		glVertex3f(cubeMax[0], cubeMax[1], cubeMax[2]);
+		glVertex3f(cubeMin[0], cubeMax[1], cubeMax[2]);
+
+		glVertex3f(cubeMax[0], cubeMax[1], cubeMax[2]);
+		glVertex3f(cubeMax[0], cubeMin[1], cubeMax[2]);
+
+		glVertex3f(cubeMax[0], cubeMax[1], cubeMax[2]);
+		glVertex3f(cubeMax[0], cubeMax[1], cubeMin[2]);
+
+		glVertex3f(cubeMin[0], cubeMin[1], cubeMax[2]);
+		glVertex3f(cubeMax[0], cubeMin[1], cubeMax[2]);
+
+		glVertex3f(cubeMax[0], cubeMin[1], cubeMin[2]);
+		glVertex3f(cubeMax[0], cubeMin[1], cubeMax[2]);
+
+		glVertex3f(cubeMin[0], cubeMin[1], cubeMax[2]);
+		glVertex3f(cubeMin[0], cubeMax[1], cubeMax[2]);
+
+		glVertex3f(cubeMin[0], cubeMax[1], cubeMin[2]);
+		glVertex3f(cubeMin[0], cubeMax[1], cubeMax[2]);
+
+		glVertex3f(cubeMin[0], cubeMax[1], cubeMin[2]);
+		glVertex3f(cubeMax[0], cubeMax[1], cubeMin[2]);
+
+		glVertex3f(cubeMax[0], cubeMin[1], cubeMin[2]);
+		glVertex3f(cubeMax[0], cubeMax[1], cubeMin[2]);
+				
+		glEnd();
+	}
+
 	glFlush();
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -236,10 +315,10 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 			ImGui::DragFloat("Min Distance:", &scan_settings_.minDistance, 0.01f, 0.0f, 10.0f);
 			ImGui::DragFloat("Max Distance:", &scan_settings_.maxDistance, 0.01f, 0.0f, 10.0f);
 
-			if (ImGui::Button("Take Ignore Shot"))
-			{
-				GetIgnoreFrame();
-			}
+			ImGui::Separator();
+
+			ImGui::DragInt("Ignore History:", &scan_settings_.history, 1, 20);
+			ImGui::DragFloat("Ignore Threshold:", &scan_settings_.varThreshold, 0.1f, 0.0f, 100.0f);
 
 			ImGui::Separator();
 			
@@ -271,8 +350,7 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 						serialInFuture = std::async(std::launch::async, &SerialCom::DataAvailable, &serial_com_);
 					}
 					else
-						connected = false;
-					
+						connected = false;					
 				}
 			}
 			else
@@ -315,7 +393,7 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 					}
 				}
 
-				if (ImGui::Button("Disconnect"))
+				if ( ImGui::Button("Disconnect"))
 				{
 					serial_com_.ClosePort();
 					connected = false;
@@ -323,7 +401,7 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 				}
 			}
 			
-
+			//Start scanning the model
 			if (ImGui::Button("Start"))
 			{
 				if (!currentModel.empty())				
@@ -333,60 +411,60 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 				currentModel.reserve(scan_settings_.numberOfImages);
 				capturing = true;
 			}
+		
+		}
+		ImGui::End();
 
-			if (!currentModel.empty() && capturing)
+		RenderToTexturePreview(angle, x, y, z);
+
+		if (ImGui::Begin("Scan Preview"))
+		{
+			/*ImVec2 vMin = ImGui::GetWindowContentRegionMin();
+			ImVec2 vMax = ImGui::GetWindowContentRegionMax();
+
+			ImVec2 size(vMax.x - vMin.x, vMax.y - vMin.y);*/
+
+			ImVec2 size(DEPTH_SENSOR_WIDTH, DEPTH_SENSOR_HEIGHT);
+
+			ImGui::Image(reinterpret_cast<void*>(modelTexture), size, ImVec2(0, 1), ImVec2(1, 0));
+
+			ImGui::Separator();
+
+			ImGui::DragInt("Number Ignore images", &scan_settings_.ignoreFrames, 1, 1, 100);
+
+			if(scan_settings_.ignoreFrames > scan_settings_.currentIgnoreFrame)
+			scan_settings_.currentIgnoreFrame = scan_settings_.ignoreFrames;
+
+			if (ImGui::Button("Take Ignore Shot"))
 			{
-				RenderToTexture(angle, x, y, z);
-
-				//if (ImGui::Begin("Model"))
-				//{
-				//	ImVec2 vMin = ImGui::GetWindowContentRegionMin();
-				//	ImVec2 vMax = ImGui::GetWindowContentRegionMax();
-
-				//	ImVec2 size(vMax.x - vMin.x, vMax.y - vMin.y);
-
-				//	ImGui::Image(reinterpret_cast<void*>(modelTexture), size, ImVec2(0, 1), ImVec2(1, 0));
-				//}
-				//ImGui::End();
-
-
-				if (ImGui::Button("Export"))
-				{
-					//TODO:Export model
-				}
+				CreateIgnoreFrame();
 			}
-			else
+
+			ImGui::Checkbox("Show Ignore Box", &scan_settings_.showCube);
+
+			if (scan_settings_.showCube)
 			{
-				RenderToTexturePreview(angle, x, y, z);
-
-				if (ImGui::Begin("Model"))
-				{
-					ImVec2 vMin = ImGui::GetWindowContentRegionMin();
-					ImVec2 vMax = ImGui::GetWindowContentRegionMax();
-
-					ImVec2 size(vMax.x - vMin.x, vMax.y - vMin.y);
-
-					ImGui::Image(reinterpret_cast<void*>(modelTexture), size, ImVec2(0, 1), ImVec2(1, 0));
-
-					ImGui::Separator();
-
-					
-				}
-				ImGui::End();
+				ImGui::Checkbox("Clip Ignore box", &scan_settings_.cubeSet);
+				ImGui::DragFloat3("Cube Pos:", &scan_settings_.cubePos[0], 0.01f, -100.0f, 100.0f);
+				ImGui::DragFloat3("Cube Scale:", &scan_settings_.cubeScale[0], 0.01f, -100.0f, 100.0f);
 			}
 		}
 		ImGui::End();
 	}
 	else
 	{
-		
+		if(ImGui::Begin("Model Preview"))
+		{
+			
+		}
+		ImGui::End();
 	}
 	
 }
 
 void ModelCapture::ModelGatherTick(float time)
 {
-	if (hasIgnore && scan_settings_.ignoreFrames >= scan_settings_.currentIgnoreFrame)
+	if (!capturing && hasIgnore && scan_settings_.ignoreFrames > scan_settings_.currentIgnoreFrame)
 		AddIgnoreFrame();
 	
 	if (!connected)
@@ -417,6 +495,8 @@ void ModelCapture::ModelGatherTick(float time)
 					capturing = false;
 
 					GetCameraFrame();
+
+					//Convert multiple point clouds into mesh
 				}
 
 				c = serial_com_.GetCharFromBuffer();

@@ -29,14 +29,25 @@ struct ScanSettings
 	int numberOfImages = 30;
 	float minDistance = 1.0f;
 	float maxDistance = 10.0f;
-
 	
 	int ignoreFrames = 10;
 	int currentIgnoreFrame = 10;
-	
+
+	bool cubeSet = false;
+	bool showCube = false;
+	float cubePos[3] = {0.0f, 0.0f, 0.0f};
+	float cubeScale[3] = {1.0f, 1.0f, 1.0f};
+
+	//Used to ignore the background
 	cv::Mat ignoreMat;
 	cv::Mat ignoreMask;
 	cv::Ptr<cv::BackgroundSubtractor> backSub;
+
+	//BackgroundSubtractor settings
+	int history = 1000;
+	float varThreshold = 100;
+
+	//Image data for ignore mask
 	unsigned char* rgbIgnoreImage; //[RGB_SENSOR_WIDTH * RGB_SENSOR_HEIGHT * 4];
 };
 
@@ -47,11 +58,29 @@ struct Vertex
 
 	Vertex(glm::vec3 xyz, glm::vec3 rgb) : pos(xyz), color(rgb)
 	{}
+
+	Vertex RotateAroundPoint(glm::vec3 point, float radian) const
+	{
+		if (radian == 0.0f)
+			return Vertex(pos, color);
+		
+		glm::vec3 offset = pos - point;
+		glm::vec3 rotatedPos;
+		rotatedPos.x = offset.x * glm::cos(radian) - offset.z * glm::sin(radian);
+		rotatedPos.z = offset.x * glm::sin(radian) + offset.z * glm::cos(radian);
+		rotatedPos.y = offset.y;
+
+		rotatedPos += offset;
+
+		return Vertex(rotatedPos, color);
+	}
 };
 
 struct CGAL_Model
 {
 	std::vector<Vertex> vertex;
+
+	//TODO:Get RGB image and try to stitch onto model
 	
 	void AddPoint(glm::vec3 point, glm::vec3 color)
 	{
@@ -102,7 +131,7 @@ class ModelCapture
 	//Gets the frame from the camera ignoring points outside of the Scan Settings
 	void GetCameraFrame();
 
-	void GetIgnoreFrame();
+	void CreateIgnoreFrame();
 
 	//Add multiple ignore frames together to get a better comparison
 	void AddIgnoreFrame();
