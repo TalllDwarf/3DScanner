@@ -38,7 +38,7 @@ int SDL_main(int, char**)
 		return EXIT_FAILURE;
 	}
 
-	SDL_Window* window = SDL_CreateWindow("Node++", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, SDL_WINDOW_OPENGL
+	SDL_Window* window = SDL_CreateWindow("3D Scanner", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 720, SDL_WINDOW_OPENGL
 		| SDL_WINDOW_RESIZABLE
 		| SDL_WINDOW_ALLOW_HIGHDPI);
 
@@ -95,7 +95,7 @@ int SDL_main(int, char**)
 	ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
 	ImGui_ImplOpenGL3_Init(glsl_version);
 
-	const ImVec4 clear_color = ImVec4(1.f, 1.f, 1.f, 1.00f);
+	const ImVec4 clear_color = ImVec4(.1f, .1f, .1f, 1.00f);
 
 	// Main loop
 	bool done = false;

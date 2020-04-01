@@ -10,8 +10,6 @@
 
 #define BACK_SUB_AMOUNT 100
 
-//TODO:CLIP CUBE
-
 void ModelCapture::GetCameraFrame()
 {
 	const ModelShot* current_shot = camera_->GetCurrentModelShot();
@@ -19,26 +17,19 @@ void ModelCapture::GetCameraFrame()
 	if (!current_shot)
 		return;
 	
-	CGAL_Model shot;
+	PointModel shot;
 
 	if (hasIgnore)
 	{		
 		cv::Mat imageMat = cv::Mat(RGB_SENSOR_WIDTH * 4, RGB_SENSOR_HEIGHT, CV_8UC1, current_shot->rgbimage);
 		scan_settings_.backSub->apply(imageMat, scan_settings_.ignoreMask, 0);
 	}
-		
-	//Create list
-	for (int i = 0; i < (DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT); ++i)
+
+	float cubeMin[3];
+	float cubeMax[3];
+	
+	if (scan_settings_.cubeSet)
 	{
-		ColorSpacePoint p = current_shot->rgb[i];
-		int idx = static_cast<int>(p.X) + RGB_SENSOR_WIDTH * static_cast<int>(p.Y);
-
-		if (p.X < 0 || p.Y < 0 || p.X > RGB_SENSOR_WIDTH || p.Y > RGB_SENSOR_HEIGHT && (idx > 2073596))
-			continue;
-
-		float cubeMin[3];
-		float cubeMax[3];
-
 		cubeMin[0] = ((-0.1f * scan_settings_.cubeScale[0]) + scan_settings_.cubePos[0]);
 		cubeMin[1] = ((-0.1f * scan_settings_.cubeScale[1]) + scan_settings_.cubePos[1]);
 		cubeMin[2] = ((-0.1f * scan_settings_.cubeScale[2]) + scan_settings_.cubePos[2]);
@@ -46,6 +37,17 @@ void ModelCapture::GetCameraFrame()
 		cubeMax[0] = ((0.1f * scan_settings_.cubeScale[0]) + scan_settings_.cubePos[0]);
 		cubeMax[1] = ((0.1f * scan_settings_.cubeScale[1]) + scan_settings_.cubePos[1]);
 		cubeMax[2] = ((0.1f * scan_settings_.cubeScale[2]) + scan_settings_.cubePos[2]);
+	}
+	
+	//Create list
+	for (int i = 0; i < (DEPTH_SENSOR_WIDTH * DEPTH_SENSOR_HEIGHT); ++i)
+	{
+		ColorSpacePoint p = current_shot->rgb[i];
+
+		if (p.X < 0 || p.Y < 0 || p.X > RGB_SENSOR_WIDTH || p.Y > RGB_SENSOR_HEIGHT)
+			continue;
+
+		int idx = static_cast<int>(p.X) + RGB_SENSOR_WIDTH * static_cast<int>(p.Y);
 		
 		if (current_shot->xyz[i].Z >= scan_settings_.minDistance &&
 			current_shot->xyz[i].Z <= scan_settings_.maxDistance &&
@@ -61,43 +63,21 @@ void ModelCapture::GetCameraFrame()
 					(cubeMin[2] <= current_shot->xyz[i].Z && cubeMax[2] >= current_shot->xyz[i].Z)))
 		{
 			shot.AddPoint(
-				glm::vec3(
 					current_shot->xyz[i].X,
 					current_shot->xyz[i].Y,
-					current_shot->xyz[i].Z),
-				glm::vec3(
+					current_shot->xyz[i].Z,
 					current_shot->rgbimage[(4 * idx)],
 					current_shot->rgbimage[(4 * idx) + 1],
 					current_shot->rgbimage[(4 * idx) + 2]
-				));
+				);
 		}
 	}
 
 	//If we didn't get any points separate
-	if (shot.vertex.empty())
+	if (shot.points.empty())
 		return;
 	
 	currentModel.push_back(std::move(shot));
-	
-	//CGAL_Model output;
-	//CGAL::wlop_simplify_and_regularize_point_set<CGAL::Sequential_tag>
-	//	(shot.xyz,
-	//		std::back_inserter(output.xyz),
-	//		CGAL::parameters::select_percentage(scan_settings_.retainPercentage).
-	//		neighbor_radius(scan_settings_.neighborRadius));
-
-	////Add the colour to the output
-	//for(auto xyz : output.xyz)
-	//{
-	//	auto it = std::find(shot.xyz.begin(), shot.xyz.end(), xyz);
-
-	//	if(it != shot.xyz.end())
-	//	{
-	//		output.rgb.push_back(shot.rgb[std::distance(shot.xyz.begin(), it)]);
-	//	}
-	//}
-
-	//currentModel.push_back(output);
 }
 
 void ModelCapture::CreateIgnoreFrame()
@@ -107,12 +87,14 @@ void ModelCapture::CreateIgnoreFrame()
 	if (!current_shot)
 		return;
 
-	memcpy(scan_settings_.rgbIgnoreImage, current_shot->rgbimage, (RGB_SENSOR_WIDTH * RGB_SENSOR_HEIGHT * 4));
-	scan_settings_.ignoreMat = cv::Mat(RGB_SENSOR_WIDTH * 4, RGB_SENSOR_HEIGHT, CV_8UC1, scan_settings_.rgbIgnoreImage);
+	//Copy RGB data to scan settings
+	//memcpy(scan_settings_.rgbIgnoreImage, current_shot->rgbimage, (RGB_SENSOR_WIDTH * RGB_SENSOR_HEIGHT * 4));
 	scan_settings_.ignoreMask = cv::Mat(RGB_SENSOR_WIDTH * 4, RGB_SENSOR_HEIGHT, CV_8UC1);
 
 	scan_settings_.backSub = cv::createBackgroundSubtractorMOG2(scan_settings_.history, scan_settings_.varThreshold, false);
-	scan_settings_.backSub->apply(scan_settings_.ignoreMat, scan_settings_.ignoreMask, 1);
+	scan_settings_.backSub->apply(
+		cv::Mat(RGB_SENSOR_WIDTH * 4, RGB_SENSOR_HEIGHT, CV_8UC1, current_shot->rgbimage),
+		scan_settings_.ignoreMask, 1);
 
 	scan_settings_.currentIgnoreFrame = 0;
 	lastIgnoreFrameID = camera_->GetFrameID();
@@ -138,7 +120,7 @@ void ModelCapture::AddIgnoreFrame()
 
 ModelCapture::ModelCapture(Camera* camera) : camera_(camera), fileDialog(ImGuiFileBrowserFlags_EnterNewFilename)
 {
-	scan_settings_.rgbIgnoreImage = new unsigned char[RGB_SENSOR_WIDTH * RGB_SENSOR_HEIGHT * 4];
+	//scan_settings_.rgbIgnoreImage = new unsigned char[RGB_SENSOR_WIDTH * RGB_SENSOR_HEIGHT * 4];
 	
 	serial_com_.SearchForAvailablePorts();
 
@@ -146,13 +128,16 @@ ModelCapture::ModelCapture(Camera* camera) : camera_(camera), fileDialog(ImGuiFi
 		serialPort = serial_com_.GetAvailablePorts()[0];
 	
 	fileDialog.SetTitle("Save mesh to");
+
+	meshGenerator.Init();
 }
 
 ModelCapture::~ModelCapture()
 {
-	delete[] scan_settings_.rgbIgnoreImage;
+	//delete[] scan_settings_.rgbIgnoreImage;
 }
 
+//Initialise frame buffer to render model preview to
 bool ModelCapture::Init()
 {
 	glGenFramebuffers(1, &modelFrameBuffer);
@@ -203,8 +188,8 @@ void ModelCapture::RenderToTexture(float angle, float x, float y, float z) const
 	if (!currentModel.empty())
 	{
 		//					get angle for each image
-		float singleTurn = (360.f / scan_settings_.numberOfImages) * (glm::pi<float>() / 180.f);
-		glm::vec3 centerPoint(
+		float singleTurn = scan_settings_.singleRotation;
+		const glm::vec3 centerPoint(
 			scan_settings_.cubePos[0],
 			scan_settings_.cubePos[1],
 			scan_settings_.cubePos[2]
@@ -213,19 +198,30 @@ void ModelCapture::RenderToTexture(float angle, float x, float y, float z) const
 		//for (const auto& model : currentModel)
 		for(int i = 0; i < currentModel.size(); ++i)
 		{
-			if (!currentModel.at(i).vertex.empty())
+			if (!currentModel.at(i).points.empty())
 			{
-				for(Vertex v : currentModel.at(i).vertex)
-				{					
-					Vertex rotatedV = v.RotateAroundPoint(centerPoint, singleTurn * i);
-					glColor3ub(rotatedV.color.r, rotatedV.color.g, rotatedV.color.b);
-					glVertex3f(rotatedV.pos.x, rotatedV.pos.y, rotatedV.pos.z);
+				const PointModel model = currentModel.at(i);
+
+				Point point;
+				Point color;
+				
+				//for(Point v : model.points)
+				for(int v = 0; v < model.points.size(); ++v)
+				{
+					point = model.RotateAroundPoint(v, centerPoint, singleTurn * (currentModel.size() - i - 1));
+					color = model.points[v].second.first;
+					
+					//const glm::vec3 rotatedV = 
+					glColor3ub(	color.x(), color.y(), color.z());
+					//glVertex3f(rotatedV.x, rotatedV.y, rotatedV.z);
+					glVertex3f(point.x(), point.y(), point.z());
 				}
 			}
 		}
 	}
 	glEnd();
-	
+
+	//Draws the cube to the texture
 	if(scan_settings_.showCube)
 	{		
 		glBegin(GL_LINES);
@@ -288,12 +284,19 @@ void ModelCapture::RenderToTexture(float angle, float x, float y, float z) const
 
 void ModelCapture::RenderToTexturePreview(float angle, float x, float y, float z)
 {
+	//If the camera frame has updated 
 	if (lastFrameID != camera_->GetFrameID())
 	{
+		//Clear the last frames model
 		currentModel.clear();
+
+		//Get the new camera frame
 		GetCameraFrame();
 
-		RenderToTexture(angle, x, y, z);		
+		//Render the camera frame to texture
+		RenderToTexture(angle, x, y, z);
+
+		//Update last camera frame
 		lastFrameID = camera_->GetFrameID();
 	}
 }
@@ -314,11 +317,6 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 			ImGui::DragInt("Number of Images:", &scan_settings_.numberOfImages, 1, 20, 255);
 			ImGui::DragFloat("Min Distance:", &scan_settings_.minDistance, 0.01f, 0.0f, 10.0f);
 			ImGui::DragFloat("Max Distance:", &scan_settings_.maxDistance, 0.01f, 0.0f, 10.0f);
-
-			ImGui::Separator();
-
-			ImGui::DragInt("Ignore History:", &scan_settings_.history, 1, 20);
-			ImGui::DragFloat("Ignore Threshold:", &scan_settings_.varThreshold, 0.1f, 0.0f, 100.0f);
 
 			ImGui::Separator();
 			
@@ -389,7 +387,17 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 						//Set number of Images
 						serial_com_.WriteChar(static_cast<char>(scan_settings_.numberOfImages));
 
+						if (!currentModel.empty())
+							currentModel.clear();
+
+						//Create a model shot for each shot
+						currentModel.reserve(scan_settings_.numberOfImages);
 						capturing = true;
+
+						scan_settings_.singleRotation = (360.f / scan_settings_.numberOfImages) * (glm::pi<float>() / 180.f);
+
+						GetCameraFrame();
+						serial_com_.WriteChar('S');
 					}
 				}
 
@@ -399,96 +407,122 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 					connected = false;
 					motorBusy = false;
 				}
-			}
-			
-			//Start scanning the model
-			if (ImGui::Button("Start"))
-			{
-				if (!currentModel.empty())				
-					currentModel.clear();
-					
-				//Create a model shot for each shot
-				currentModel.reserve(scan_settings_.numberOfImages);
-				capturing = true;
-			}
-		
+			}			
 		}
 		ImGui::End();
 
-		RenderToTexturePreview(angle, x, y, z);
-
-		if (ImGui::Begin("Scan Preview"))
+		if (currentModel.size() <= 1)
 		{
-			/*ImVec2 vMin = ImGui::GetWindowContentRegionMin();
-			ImVec2 vMax = ImGui::GetWindowContentRegionMax();
-
-			ImVec2 size(vMax.x - vMin.x, vMax.y - vMin.y);*/
-
-			ImVec2 size(DEPTH_SENSOR_WIDTH, DEPTH_SENSOR_HEIGHT);
-
-			ImGui::Image(reinterpret_cast<void*>(modelTexture), size, ImVec2(0, 1), ImVec2(1, 0));
-
-			ImGui::Separator();
-
-			ImGui::DragInt("Number Ignore images", &scan_settings_.ignoreFrames, 1, 1, 100);
-
-			if(scan_settings_.ignoreFrames > scan_settings_.currentIgnoreFrame)
-			scan_settings_.currentIgnoreFrame = scan_settings_.ignoreFrames;
-
-			if (ImGui::Button("Take Ignore Shot"))
+			if (ImGui::Begin("Scan Preview"))
 			{
-				CreateIgnoreFrame();
-			}
 
-			ImGui::Checkbox("Show Ignore Box", &scan_settings_.showCube);
+				RenderToTexturePreview(angle, x, y, z);
 
-			if (scan_settings_.showCube)
-			{
-				ImGui::Checkbox("Clip Ignore box", &scan_settings_.cubeSet);
-				ImGui::DragFloat3("Cube Pos:", &scan_settings_.cubePos[0], 0.01f, -100.0f, 100.0f);
-				ImGui::DragFloat3("Cube Scale:", &scan_settings_.cubeScale[0], 0.01f, -100.0f, 100.0f);
+				ImVec2 size(DEPTH_SENSOR_WIDTH, DEPTH_SENSOR_HEIGHT);
+
+				ImGui::Image(reinterpret_cast<void*>(modelTexture), size, ImVec2(0, 1), ImVec2(1, 0));
+
+				ImGui::Separator();
+
+				//The number of images the camera will take to get a better ignore image
+				//Reduces the amount of false positives
+				ImGui::DragInt("Number Ignore images", &scan_settings_.ignoreFrames, 1, 1, 100);
+				if (scan_settings_.ignoreFrames > scan_settings_.currentIgnoreFrame)
+					scan_settings_.currentIgnoreFrame = scan_settings_.ignoreFrames;
+
+				ImGui::Separator();
+
+				ImGui::DragInt("Ignore History:", &scan_settings_.history, 1, 20, 2000);
+				ImGui::DragFloat("Ignore Threshold:", &scan_settings_.varThreshold, 0.1f, 0.0f, 200.0f);
+
+				if (ImGui::Button("Take Ignore Shot"))
+				{
+					CreateIgnoreFrame();
+				}
+
+				ImGui::Checkbox("Show Ignore Box", &scan_settings_.showCube);
+
+				//If the the cube is enabled 	
+				if (scan_settings_.showCube)
+				{
+					ImGui::Checkbox("Clip Ignore box", &scan_settings_.cubeSet);
+					ImGui::DragFloat3("Cube Pos:", &scan_settings_.cubePos[0], 0.01f, -100.0f, 100.0f);
+					ImGui::DragFloat3("Cube Scale:", &scan_settings_.cubeScale[0], 0.01f, -100.0f, 100.0f);
+				}
 			}
+			ImGui::End();
 		}
-		ImGui::End();
+		else
+		{
+			if (ImGui::Begin("Model Preview"))
+			{
+				RenderToTexture(angle, x, y, z);
+
+				ImGui::Image(reinterpret_cast<void*>(modelTexture), ImVec2(DEPTH_SENSOR_WIDTH, DEPTH_SENSOR_HEIGHT), ImVec2(0, 1), ImVec2(1, 0));
+
+				ImGui::DragFloat("Single Rotation:", &scan_settings_.singleRotation, 0.001f, -6.283f, 6.283f);
+
+				if(ImGui::Button("Generate Model"))
+				{
+					meshGenerator.Run(std::move(GenerateCombinedModel()));
+				}
+			}
+			ImGui::End();
+
+			meshGenerator.Render(angle, x, y, z);
+		}
+		
 	}
 	else
 	{
 		if(ImGui::Begin("Model Preview"))
 		{
-			
+			RenderToTexture(angle, x, y, z);
+
+			ImVec2 size(DEPTH_SENSOR_WIDTH, DEPTH_SENSOR_HEIGHT);
+
+			ImGui::Image(reinterpret_cast<void*>(modelTexture), size, ImVec2(0, 1), ImVec2(1, 0));
+
 		}
 		ImGui::End();
 	}
-	
 }
 
 void ModelCapture::ModelGatherTick(float time)
 {
+	//are currently getting ignore frames
 	if (!capturing && hasIgnore && scan_settings_.ignoreFrames > scan_settings_.currentIgnoreFrame)
 		AddIgnoreFrame();
-	
+
+	//is the turntable connected
 	if (!connected)
 		return;
 
+	//Have we got a return from the serial thread
 	if (serialInFuture.valid() && SerialCom::is_Ready(serialInFuture))
 	{
+		//Do we have any data
 		if (serialInFuture.get())
 		{
 			char c = serial_com_.GetCharFromBuffer();
 
 			while (c != '\0')
 			{
+				//D == Turntable finished turn
 				if (c == 'D')
 				{
 					motorBusy = false;
-				}
-				else if (capturing && !motorBusy)
-				{
-					GetCameraFrame();
-					serial_com_.WriteChar('S');
-					motorBusy = true;
+
+					if(capturing)
+					{
+						GetCameraFrame();
+						//Tell the camera to turn
+						serial_com_.WriteChar('S');
+						motorBusy = true;
+					}
 				}
 				//Finished all rotation
+				//F == Turntable finished full turn
 				else if (c == 'F')
 				{
 					motorBusy = false;
@@ -496,7 +530,10 @@ void ModelCapture::ModelGatherTick(float time)
 
 					GetCameraFrame();
 
-					//Convert multiple point clouds into mesh
+					//Reset turntable
+					serial_com_.WriteChar('R');
+
+					//Combine point cloud and generate mesh
 				}
 
 				c = serial_com_.GetCharFromBuffer();

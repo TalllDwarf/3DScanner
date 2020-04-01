@@ -9,10 +9,12 @@
 #include "Camera.h"
 #include "imfilebrowser.h"
 #include "SerialCom.h"
+#include "MeshGenerator.h"
 
 #define CGAL_NO_GMP 1
 
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
+#include <CGAL/property_map.h>
 #include <opencv2/core/mat.hpp>
 #include <opencv2/video/background_segm.hpp>
 #include <SDL/SDL.h>
@@ -24,8 +26,17 @@ typedef CGAL::Exact_predicates_inexact_constructions_kernel Kernel;
 typedef Kernel::Point_3 Point;
 typedef Kernel::Vector_3 Vector;
 
+typedef std::pair<Point, Vector> ColorNormal;
+typedef std::pair<Point, ColorNormal> PointWithData;
+typedef CGAL::First_of_pair_property_map<PointWithData> PointMap;
+typedef CGAL::First_of_pair_property_map<CGAL::Second_of_pair_property_map<PointWithData>> ColorMap;
+typedef CGAL::Second_of_pair_property_map<CGAL::Second_of_pair_property_map<PointWithData>> NormalMap;
+
+
 struct ScanSettings
 {
+	float singleRotation = 0.01f;
+	
 	int numberOfImages = 30;
 	float minDistance = 1.0f;
 	float maxDistance = 10.0f;
@@ -39,53 +50,92 @@ struct ScanSettings
 	float cubeScale[3] = {1.0f, 1.0f, 1.0f};
 
 	//Used to ignore the background
-	cv::Mat ignoreMat;
 	cv::Mat ignoreMask;
 	cv::Ptr<cv::BackgroundSubtractor> backSub;
 
-	//BackgroundSubtractor settings
+	//Background Subtractor settings
 	int history = 1000;
 	float varThreshold = 100;
 
 	//Image data for ignore mask
-	unsigned char* rgbIgnoreImage; //[RGB_SENSOR_WIDTH * RGB_SENSOR_HEIGHT * 4];
+	//unsigned char* rgbIgnoreImage; //[RGB_SENSOR_WIDTH * RGB_SENSOR_HEIGHT * 4];
 };
 
-struct Vertex
+struct PointModel
 {
-	glm::vec3 pos;
-	glm::vec3 color;
+	std::vector<PointWithData> points;
 
-	Vertex(glm::vec3 xyz, glm::vec3 rgb) : pos(xyz), color(rgb)
-	{}
+	void AddPoint(float x, float y, float z, float r, float g, float b)
+	{
+		points.push_back(std::make_pair<Point, ColorNormal>(Point(x, y, z), std::make_pair<Point, Vector>(Point(r, g, b), Vector())));
+	}
 
-	Vertex RotateAroundPoint(glm::vec3 point, float radian) const
+	//Rotate this vertex around a point
+	Point RotateAroundPoint(int index, glm::vec3 point, float radian) const
 	{
 		if (radian == 0.0f)
-			return Vertex(pos, color);
+			return points[index].first;
+
+		glm::vec3 position(
+			points[index].first.x(), 
+			points[index].first.y(), 
+			points[index].first.z());
+		const glm::vec3 offset = position - point;
+
+		float s = glm::sin(radian);
+		float c = glm::cos(radian);
 		
-		glm::vec3 offset = pos - point;
 		glm::vec3 rotatedPos;
-		rotatedPos.x = offset.x * glm::cos(radian) - offset.z * glm::sin(radian);
-		rotatedPos.z = offset.x * glm::sin(radian) + offset.z * glm::cos(radian);
+		rotatedPos.x = offset.x * c - offset.z * s;
+		rotatedPos.z = offset.x * s + offset.z * c;
 		rotatedPos.y = offset.y;
 
-		rotatedPos += offset;
+		rotatedPos += point;
+		//rotatedPos += offset;
 
-		return Vertex(rotatedPos, color);
+		return Point(rotatedPos.x, rotatedPos.y, rotatedPos.z);
 	}
-};
-
-struct CGAL_Model
-{
-	std::vector<Vertex> vertex;
-
-	//TODO:Get RGB image and try to stitch onto model
 	
-	void AddPoint(glm::vec3 point, glm::vec3 color)
-	{
-		vertex.emplace_back(point, color);
-	}
+	//std::vector<Point> points;
+	//std::vector<Point> colors;
+	//std::vector<Vector> normals;
+
+	////TODO:Get RGB image and try to stitch onto model
+
+	//void Reserve(int amount)
+	//{
+	//	points.reserve(amount);
+	//	colors.reserve(amount);
+	//}
+	//
+	//void AddPoint(float x, float y, float z, float r, float g, float b)
+	//{		
+	//	points.emplace_back(x, y, z);
+	//	colors.emplace_back(r, g, b);
+	//}
+
+	////Rotate this vertex around a point
+	//Point RotateAroundPoint(int index, glm::vec3 point, float radian) const
+	//{
+	//	if (radian == 0.0f)
+	//		return points[index];
+
+	//	glm::vec3 position(points[index].x(), points[index].y(), points[index].z());
+	//	const glm::vec3 offset = position - point;
+
+	//	float s = glm::sin(radian);
+	//	float c = glm::cos(radian);
+	//	
+	//	glm::vec3 rotatedPos;
+	//	rotatedPos.x = offset.x * c - offset.z * s;
+	//	rotatedPos.z = offset.x * s + offset.z * c;
+	//	rotatedPos.y = offset.y;
+
+	//	rotatedPos += point;
+	//	//rotatedPos += offset;
+
+	//	return Point(rotatedPos.x, rotatedPos.y, rotatedPos.z);
+	//}
 };
 
 
@@ -108,11 +158,14 @@ class ModelCapture
 	float serialCheck = SERIAL_DELAY;
 	
 	//Model
-	std::vector<CGAL_Model> currentModel;
+	std::vector<PointModel> currentModel;
 	bool hasIgnore;
 	int lastFrameID = -1;
 	int lastIgnoreFrameID = -1;
 
+	MeshGenerator meshGenerator;
+
+	
 	//Settings
 	ScanSettings scan_settings_;
 	std::string fileRoot;
@@ -135,6 +188,8 @@ class ModelCapture
 
 	//Add multiple ignore frames together to get a better comparison
 	void AddIgnoreFrame();
+
+	PointModel GenerateCombinedModel();
 
 public:
 

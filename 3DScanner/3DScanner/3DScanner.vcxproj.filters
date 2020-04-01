@@ -51,7 +51,7 @@
     <ClCompile Include="Core\SerialCom.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="MeshGenerator.cpp">
+    <ClCompile Include="Core\MeshGenerator.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -98,7 +98,7 @@
     <ClInclude Include="Core\ModelCapture.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="MeshGenerator.h">
+    <ClInclude Include="Core\MeshGenerator.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

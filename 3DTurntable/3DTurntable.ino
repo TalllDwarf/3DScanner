@@ -5,7 +5,7 @@
 #define YPIN A1
 #define BUTTON 13
 
-#define MAX_MOTOR_SPEED 15
+#define MAX_MOTOR_SPEED 10
 #define STEPS 2049
 #define FULL_REV (STEPS * 7)
 
@@ -18,7 +18,7 @@ char line1[16];
 char serialIn = ' ';
 
 unsigned char numberOfTurns = 0;
-unsigned short singleStep = 0;
+unsigned int singleStep = 0;
 
 //The how many steps should each step do
 int eachStep = 1;
@@ -38,6 +38,15 @@ void setup()
   //Print hello world
   lcd.print("  3D Turntable  ");
   Serial.println("3D Turntable");
+
+  while(!Serial)
+  {
+    delay(10);
+    lcd.setCursor(0,1);
+    sprintf(line1, "Waiting for PC ");
+    lcd.print(line1); 
+  }
+  
 }
 
 void StopStepper()
@@ -101,7 +110,7 @@ void loop()
         while(Serial.available() == 0) {}
        
         numberOfTurns = Serial.read();
-        singleStep = FULL_REV / (unsigned short)numberOfTurns;
+        singleStep = FULL_REV / (unsigned int)numberOfTurns;
       break;
     }
   }
