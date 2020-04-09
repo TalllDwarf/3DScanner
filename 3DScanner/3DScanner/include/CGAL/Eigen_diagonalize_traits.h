@@ -13,8 +13,8 @@
 #ifndef CGAL_EIGEN_DIAGONALIZE_TRAITS_H
 #define CGAL_EIGEN_DIAGONALIZE_TRAITS_H
 
-#include <Eigen/Dense>
-#include <Eigen/Eigenvalues>
+#include "Eigen/Dense"
+#include "Eigen/Eigenvalues"
 
 // If the matrix to diagonalize is of dimension 2x2 or 3x3, Eigen
 // provides a faster implementation using a closed-form

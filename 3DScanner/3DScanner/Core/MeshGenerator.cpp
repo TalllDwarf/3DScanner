@@ -2,28 +2,100 @@
 
 #include <CGAL/remove_outliers.h>
 #include <CGAL/pca_estimate_normals.h>
+#include <CGAL/grid_simplify_point_set.h>
+#include <CGAL/hierarchy_simplify_point_set.h>
+#include <CGAL/jet_smooth_point_set.h>
+#include <CGAL/pca_estimate_normals.h>
+#include <CGAL/mst_orient_normals.h>
+#include <CGAL/bilateral_smooth_point_set.h>
+
+#include "Camera.h"
+#include "Exporter.h"
+#include "imgui.h"
 
 void MeshGenerator::RemoveOutliers()
 {
 	//Gets the average spacing
-	averageSpacing = CGAL::compute_average_spacing<CGAL::Sequential_tag>(combinedModel.points, numberOfNeighbors, CGAL::parameters::point_map(PointMap()));
-
+	averageSpacing = CGAL::compute_average_spacing<CGAL::Sequential_tag>(
+		combinedModel.points, numberOfNeighbors, CGAL::parameters::point_map(PointMap()));
+	
 	//remove outliers
 	combinedModel.points.erase(remove_outliers(combinedModel.points,
 			numberOfNeighbors,
 			CGAL::parameters::threshold_percent(100.) // No limit on the number of points that can be removed
-			.threshold_distance(2. * averageSpacing)
+			.threshold_distance(averageSpacing)
 			.point_map(PointMap())),
 		combinedModel.points.end());
 
 }
 
+void MeshGenerator::GridSimplify()
+{
+	combinedModel.points.erase(
+		CGAL::grid_simplify_point_set(combinedModel.points,
+			gridCellSize,
+			CGAL::parameters::point_map(PointMap())),
+		combinedModel.points.end());
+}
+
+void MeshGenerator::HierarchySimplify()
+{
+	combinedModel.points.erase(
+		CGAL::hierarchy_simplify_point_set(
+			combinedModel.points,
+			CGAL::parameters::size(maxClusterSize)
+			.maximum_variation(maxSurfaceVariation)
+			.point_map(PointMap())),
+		combinedModel.points.end());
+}
+
 void MeshGenerator::GenerateNormals()
 {
+	//Generate normals
+	CGAL::pca_estimate_normals<CGAL::Sequential_tag>(
+		combinedModel.points,
+		numberOfNeighbors,
+		CGAL::parameters::point_map(PointMap())
+		.normal_map(NormalMap())
+		.neighbor_radius(2 * averageSpacing));
+
+	//Orient normals
+	//Delete normals that cannot be oriented
+	/*
+	 * Normals that cannot be oriented need to be deleted for better mesh generation
+	 */
+	combinedModel.points.erase(
+		CGAL::mst_orient_normals(
+			combinedModel.points,
+			numberOfNeighbors,
+			CGAL::parameters::point_map(PointMap())
+			.normal_map(NormalMap())),
+		combinedModel.points.end());
+
+}
+
+void MeshGenerator::SmoothPoints()
+{
+	for(int i = 0; i < smoothingIterations; ++i)
+	{
+		CGAL::bilateral_smooth_point_set<CGAL::Sequential_tag>(
+			combinedModel.points,
+			neighborhoodSize,
+			CGAL::parameters::point_map(PointMap())
+			.normal_map(NormalMap())
+			.sharpness_angle(angleSharpness));
+	}
+}
+
+void MeshGenerator::SetStatus(std::string newStatus)
+{
+	statusMutex.lock();
+	status = newStatus;
+	statusMutex.unlock();
 }
 
 bool MeshGenerator::Init()
-{
+{	
 	glGenFramebuffers(1, &modelFrameBuffer);
 	glBindFramebuffer(GL_FRAMEBUFFER, modelFrameBuffer);
 
@@ -48,11 +120,33 @@ bool MeshGenerator::Init()
 	return true;
 }
 
-void MeshGenerator::Run(PointModel combModel)
+bool MeshGenerator::Run(PointModel combModel)
 {
-	combinedModel = std::move(combModel);
+	hasModel = false;
 	
+	combinedModel = std::move(combModel);
+
+	hasModel = true;	
+
+	SetStatus("Removing Outliers");
 	RemoveOutliers();
+
+	//SetStatus("Grid Simplify");
+	//GridSimplify();
+
+	SetStatus("Hierarchy Simplify");
+	HierarchySimplify();
+
+	SetStatus("Generating Normals");
+	GenerateNormals();
+
+	SetStatus("Smoothing");
+	SmoothPoints();
+
+	SetStatus("Export");
+	Exporter::Export<Exporter::PLY>(&combinedModel);
+
+	return true;
 }
 
 PointModel MeshGenerator::GetFinishedModel()
@@ -74,34 +168,64 @@ void MeshGenerator::RenderToTexture(float angle, float x, float y, float z)
 
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
-	gluLookAt(x, y, z, x + eyex, y, z + eyey, 0, y, 0);
+	gluLookAt(x, y, z, eyex + x, y, eyey + z, 0, std::abs(y), 0);
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	glPointSize(1.0f);
-	glBegin(GL_POINTS);
-
 	if (!combinedModel.points.empty())
 	{
+		glPointSize(1.0f);
+		glBegin(GL_POINTS);
+		
 		Point point;
-		Point color;
+		std::array<unsigned char, 3> color{};
 
-		//for(Point v : model.points)
-		for (int v = 0; v < combinedModel.points.size(); ++v)
+		for (auto& p : combinedModel.points)
 		{
-			point = combinedModel.points[v].first;
-			color = combinedModel.points[v].second.first;
+			point = std::get<0>(p);
+			color = std::get<1>(p);
 
 			//const glm::vec3 rotatedV = 
-			glColor3ub(color.x(), color.y(), color.z());
+			glColor3ub(color[0], color[0], color[0]);
 			//glVertex3f(rotatedV.x, rotatedV.y, rotatedV.z);
 			glVertex3f(point.x(), point.y(), point.z());
 		}
+
+		glEnd();
+		glFlush();
 	}
-	glEnd();
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 GLuint* MeshGenerator::GetTexture()
 {
 	return &modelTexture;
+}
+
+void MeshGenerator::RenderSettings()
+{
+	ImGui::Separator();
+	ImGui::Text("Outlier Removal/Simplify");
+	ImGui::DragInt("Num of Neighbors", &numberOfNeighbors, 1, 4, 100);
+
+	ImGui::Separator();
+	ImGui::Text("Grid Simplify");
+	ImGui::DragFloat("Grid Size", &gridCellSize, 0.001f, 0.001f, 1.0f);
+	
+	ImGui::Separator();
+	ImGui::Text("Smoothing");
+	ImGui::DragInt("Neighborhood Size", &neighborhoodSize, 1, 1, 200);
+	ImGui::DragFloat("Angle Sharpness", &angleSharpness, 0.1, 1.0f, 100.f);
+	ImGui::DragInt("Iterations", &smoothingIterations, 1, 1, 100);
+}
+
+std::string MeshGenerator::GetStatus()
+{
+	std::string stat;
+	statusMutex.lock();
+	stat = status;
+	statusMutex.unlock();
+	
+	return stat;
 }

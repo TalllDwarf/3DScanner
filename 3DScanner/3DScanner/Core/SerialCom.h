@@ -31,12 +31,6 @@ public:
 
 	[[nodiscard]] bool OpenPort(std::string comPort, int baudRate = CBR_9600);
 	void ClosePort();
-
-	template<typename T>
-	static bool is_Ready(std::future<T> const& f)
-	{
-		return f.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
-	}
 	
 	[[nodiscard]] bool DataAvailable();
 	[[nodiscard]] bool DataInBuffer() const;

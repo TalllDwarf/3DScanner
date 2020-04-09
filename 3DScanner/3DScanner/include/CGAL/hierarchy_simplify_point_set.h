@@ -26,7 +26,7 @@
 #include <CGAL/Object.h>
 #include <CGAL/centroid.h>
 #include <CGAL/point_set_processing_assertions.h>
-#include <CGAL/Default_diagonalize_traits.h>
+#include <CGAL/Eigen_diagonalize_traits.h>
 #include <CGAL/PCA_util.h>
 #include <CGAL/squared_distance_3.h>
 #include <CGAL/Iterator_range.h>

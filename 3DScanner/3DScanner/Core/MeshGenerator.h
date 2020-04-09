@@ -1,33 +1,8 @@
 #pragma once
 
-#define CGAL_NO_GMP 1
+#include "ModelData.h"
+#include <mutex>
 
-#include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
-#include <CGAL/Polyhedron_3.h>
-#include <CGAL/Surface_mesh_default_triangulation_3.h>
-#include <CGAL/make_surface_mesh.h>
-#include <CGAL/Implicit_surface_3.h>
-#include <CGAL/IO/facets_in_complex_2_to_triangle_mesh.h>
-#include <CGAL/Poisson_reconstruction_function.h>
-#include <CGAL/property_map.h>
-#include <CGAL/IO/read_xyz_points.h>
-#include <CGAL/compute_average_spacing.h>
-#include <CGAL/Polygon_mesh_processing/distance.h>
-#include <boost/iterator/transform_iterator.hpp>
-
-#include <vector>
-#include <fstream>
-
-#include "ModelCapture.h"
-// Types
-typedef CGAL::Exact_predicates_inexact_constructions_kernel Kernel;
-typedef Kernel::FT FT; //A type that has all * / + = defined
-typedef Kernel::Sphere_3 Sphere;
-typedef CGAL::Polyhedron_3<Kernel> Polyhedron;
-typedef CGAL::Poisson_reconstruction_function<Kernel> Poisson_reconstruction_function;
-typedef CGAL::Surface_mesh_default_triangulation_3 STr;
-typedef CGAL::Surface_mesh_complex_2_in_triangulation_3<STr> C2t3;
-typedef CGAL::Implicit_surface_3<Kernel, Poisson_reconstruction_function> Surface_3;
 
 class MeshGenerator
 {
@@ -42,12 +17,22 @@ class MeshGenerator
     //Outlier removal settings
     int numberOfNeighbors = 24;
     float averageSpacing = 0; // = CGAL::compute_average_spacing<CGAL::Sequential_tag>(PointCloud, numberOfNeighbors);
+
+    //Grid Simplification
+    float gridCellSize = 0.001f;
 	
     //Simplification
-    int clusterSize = 100;
-    float surfaceVariation = 0.01f;
+	int maxClusterSize = 10;
+	float maxSurfaceVariation = 0.001;
+	
+	//Smoothing
+    int neighborhoodSize = 120; // Bigger = Smoother
+    int smoothingIterations = 2;
+    float angleSharpness = 25; //Needs to be bigger than 1	
 	
     PointModel combinedModel;
+
+    bool hasModel = false;
 	
 	//Triangulation settings
     // Poisson options
@@ -57,16 +42,28 @@ class MeshGenerator
 
     void RemoveOutliers();
 
+    void GridSimplify();
+	
+	void HierarchySimplify();
+	
     void GenerateNormals();
+
+    void SmoothPoints();
+
+    std::string status = "";
+
+    std::mutex statusMutex;
+
+    void SetStatus(std::string newStatus);
 	
 public:
 
     bool Init();
+
+    bool ModelAvailable() const { return hasModel; }
 	
 	//Runs the mesh generation on the point model
-    void Run(PointModel combModel);
-	
-    void Render(float angle, float x, float y, float z);
+    bool Run(PointModel combModel);
 
 	//Returns model after finished
     PointModel GetFinishedModel();
@@ -75,5 +72,8 @@ public:
     void RenderToTexture(float angle, float x, float y, float z);
 	
     GLuint* GetTexture();
-	
+
+    void RenderSettings();
+
+    std::string GetStatus();
 };

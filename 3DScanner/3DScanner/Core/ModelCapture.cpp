@@ -1,12 +1,14 @@
 #include "ModelCapture.h"
 #include <cmath>
 #include "imgui.h"
+#include "glm/glm.hpp"
 
 #include <CGAL/wlop_simplify_and_regularize_point_set.h>
 #include <CGAL/IO/write_ply_points.h>
 
 #include <opencv2/imgproc.hpp>
 #include <opencv2/video.hpp>
+#include <SDL/SDL_stdinc.h>
 
 #define BACK_SUB_AMOUNT 100
 
@@ -118,6 +120,42 @@ void ModelCapture::AddIgnoreFrame()
 	}	
 }
 
+PointModel ModelCapture::GenerateCombinedModel()
+{
+	PointModel combinedModel;
+
+	//					get angle for each image
+	float singleTurn = scan_settings_.singleRotation;
+	const glm::vec3 centerPoint(
+		scan_settings_.cubePos[0],
+		scan_settings_.cubePos[1],
+		scan_settings_.cubePos[2]
+	);
+	
+	//for (const auto& model : currentModel)
+	for (int i = 0; i < currentModel.size(); ++i)
+	{
+		if (!currentModel.at(i).points.empty())
+		{
+			const PointModel model = currentModel.at(i);
+
+			Point point;
+			Color color;
+
+			//for(Point v : model.points)
+			for (int v = 0; v < model.points.size(); ++v)
+			{
+				point = model.RotateAroundPoint(v, centerPoint, singleTurn * (currentModel.size() - i - 1));
+				color = std::get<1>(model.points[v]);
+
+				combinedModel.AddPoint(point.x(), point.y(), point.z(), color[0], color[1], color[2]);
+			}
+		}
+	}
+
+	return combinedModel;
+}
+
 ModelCapture::ModelCapture(Camera* camera) : camera_(camera), fileDialog(ImGuiFileBrowserFlags_EnterNewFilename)
 {
 	//scan_settings_.rgbIgnoreImage = new unsigned char[RGB_SENSOR_WIDTH * RGB_SENSOR_HEIGHT * 4];
@@ -178,7 +216,7 @@ void ModelCapture::RenderToTexture(float angle, float x, float y, float z) const
 
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
-	gluLookAt(x, y, z, x + eyex, y, z + eyey, 0, y, 0);
+	gluLookAt(x, y, z, x + eyex, y, z + eyey, 0, std::abs(y), 0);
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	
@@ -203,16 +241,16 @@ void ModelCapture::RenderToTexture(float angle, float x, float y, float z) const
 				const PointModel model = currentModel.at(i);
 
 				Point point;
-				Point color;
+				Color color;
 				
 				//for(Point v : model.points)
 				for(int v = 0; v < model.points.size(); ++v)
 				{
 					point = model.RotateAroundPoint(v, centerPoint, singleTurn * (currentModel.size() - i - 1));
-					color = model.points[v].second.first;
-					
+					color = std::get<1>(model.points[v]);
+				
 					//const glm::vec3 rotatedV = 
-					glColor3ub(	color.x(), color.y(), color.z());
+					glColor3ub(color[0], color[1], color[2]);
 					//glVertex3f(rotatedV.x, rotatedV.y, rotatedV.z);
 					glVertex3f(point.x(), point.y(), point.z());
 				}
@@ -314,7 +352,7 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 			//20-255 images to generate model
 			//
 
-			ImGui::DragInt("Number of Images:", &scan_settings_.numberOfImages, 1, 20, 255);
+			ImGui::DragInt("Number of Images:", &scan_settings_.numberOfImages, 1, 4, 255);
 			ImGui::DragFloat("Min Distance:", &scan_settings_.minDistance, 0.01f, 0.0f, 10.0f);
 			ImGui::DragFloat("Max Distance:", &scan_settings_.maxDistance, 0.01f, 0.0f, 10.0f);
 
@@ -394,7 +432,7 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 						currentModel.reserve(scan_settings_.numberOfImages);
 						capturing = true;
 
-						scan_settings_.singleRotation = (360.f / scan_settings_.numberOfImages) * (glm::pi<float>() / 180.f);
+						scan_settings_.singleRotation = (360.f / scan_settings_.numberOfImages) * (M_PI / 180.f);
 
 						GetCameraFrame();
 						serial_com_.WriteChar('S');
@@ -462,14 +500,30 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 
 				ImGui::DragFloat("Single Rotation:", &scan_settings_.singleRotation, 0.001f, -6.283f, 6.283f);
 
-				if(ImGui::Button("Generate Model"))
+				ImGui::Separator();
+
+				//TODO:meshGenerator settings
+
+				//If the mesh generator is not running
+				if (!meshGeneratingFuture.valid() || (is_Ready(meshGeneratingFuture) && meshGeneratingFuture.get()))
 				{
-					meshGenerator.Run(std::move(GenerateCombinedModel()));
+					meshGenerator.RenderSettings();
+
+					if (ImGui::Button("Generate Model"))
+					{
+						//meshGenerator.Run(std::move(GenerateCombinedModel()));
+						meshGeneratingFuture = std::async(std::launch::async, &MeshGenerator::Run, &meshGenerator, GenerateCombinedModel());
+					}
+					else if (meshGenerator.ModelAvailable())
+					{
+						meshGenerator.RenderToTexture(angle, x, y, z);
+						ImGui::Image(reinterpret_cast<void*>(*meshGenerator.GetTexture()), ImVec2(DEPTH_SENSOR_WIDTH, DEPTH_SENSOR_HEIGHT), ImVec2(0, 1), ImVec2(1, 0));
+					}					
 				}
+				else
+					ImGui::Text(meshGenerator.GetStatus().c_str());
 			}
 			ImGui::End();
-
-			meshGenerator.Render(angle, x, y, z);
 		}
 		
 	}
@@ -499,7 +553,7 @@ void ModelCapture::ModelGatherTick(float time)
 		return;
 
 	//Have we got a return from the serial thread
-	if (serialInFuture.valid() && SerialCom::is_Ready(serialInFuture))
+	if (serialInFuture.valid() && is_Ready(serialInFuture))
 	{
 		//Do we have any data
 		if (serialInFuture.get())
@@ -516,8 +570,10 @@ void ModelCapture::ModelGatherTick(float time)
 					if(capturing)
 					{
 						GetCameraFrame();
+
 						//Tell the camera to turn
 						serial_com_.WriteChar('S');
+
 						motorBusy = true;
 					}
 				}

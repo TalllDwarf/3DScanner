@@ -165,6 +165,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Core\Camera.cpp" />
+    <ClCompile Include="Core\Exporter.cpp" />
     <ClCompile Include="Core\main.cpp" />
     <ClCompile Include="Core\MeshGenerator.cpp" />
     <ClCompile Include="Core\ModelCapture.cpp" />
@@ -180,8 +181,10 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Core\Camera.h" />
+    <ClInclude Include="Core\Exporter.h" />
     <ClInclude Include="Core\MeshGenerator.h" />
     <ClInclude Include="Core\ModelCapture.h" />
+    <ClInclude Include="Core\ModelData.h" />
     <ClInclude Include="Core\SerialCom.h" />
     <ClInclude Include="GUI\imfilebrowser.h" />
     <ClInclude Include="Imgui\imconfig.h" />

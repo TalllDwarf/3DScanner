@@ -121,7 +121,7 @@ void Camera::RenderToTexture(float angle, float x, float y, float z) const
 	
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
-	gluLookAt(x, y, z, x + eyex, y,  z + eyey, 0, y, 0);
+	gluLookAt(x, y, z, x + eyex, y,  z + eyey, 0, std::abs(y), 0);
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glEnableClientState(GL_VERTEX_ARRAY);

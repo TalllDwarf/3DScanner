@@ -3,9 +3,6 @@
 #include <vector>
 #include <future>
 
-#include <glm/glm.hpp>
-#include <glm/gtc/type_ptr.hpp>
-
 #include "Camera.h"
 #include "imfilebrowser.h"
 #include "SerialCom.h"
@@ -13,25 +10,10 @@
 
 #define CGAL_NO_GMP 1
 
-#include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
-#include <CGAL/property_map.h>
 #include <opencv2/core/mat.hpp>
 #include <opencv2/video/background_segm.hpp>
-#include <SDL/SDL.h>
 
 #define SERIAL_DELAY 2.f
-
-// types
-typedef CGAL::Exact_predicates_inexact_constructions_kernel Kernel;
-typedef Kernel::Point_3 Point;
-typedef Kernel::Vector_3 Vector;
-
-typedef std::pair<Point, Vector> ColorNormal;
-typedef std::pair<Point, ColorNormal> PointWithData;
-typedef CGAL::First_of_pair_property_map<PointWithData> PointMap;
-typedef CGAL::First_of_pair_property_map<CGAL::Second_of_pair_property_map<PointWithData>> ColorMap;
-typedef CGAL::Second_of_pair_property_map<CGAL::Second_of_pair_property_map<PointWithData>> NormalMap;
-
 
 struct ScanSettings
 {
@@ -40,14 +22,15 @@ struct ScanSettings
 	int numberOfImages = 30;
 	float minDistance = 1.0f;
 	float maxDistance = 10.0f;
-	
+
+	//Ignore 
 	int ignoreFrames = 10;
 	int currentIgnoreFrame = 10;
 
-	bool cubeSet = false;
-	bool showCube = false;
-	float cubePos[3] = {0.0f, 0.0f, 0.0f};
-	float cubeScale[3] = {1.0f, 1.0f, 1.0f};
+	bool cubeSet = true;
+	bool showCube = true;
+	float cubePos[3] = {0.05f, 0.0f, 1.18f};
+	float cubeScale[3] = {0.76f, 0.79f, 0.76f};
 
 	//Used to ignore the background
 	cv::Mat ignoreMask;
@@ -60,84 +43,6 @@ struct ScanSettings
 	//Image data for ignore mask
 	//unsigned char* rgbIgnoreImage; //[RGB_SENSOR_WIDTH * RGB_SENSOR_HEIGHT * 4];
 };
-
-struct PointModel
-{
-	std::vector<PointWithData> points;
-
-	void AddPoint(float x, float y, float z, float r, float g, float b)
-	{
-		points.push_back(std::make_pair<Point, ColorNormal>(Point(x, y, z), std::make_pair<Point, Vector>(Point(r, g, b), Vector())));
-	}
-
-	//Rotate this vertex around a point
-	Point RotateAroundPoint(int index, glm::vec3 point, float radian) const
-	{
-		if (radian == 0.0f)
-			return points[index].first;
-
-		glm::vec3 position(
-			points[index].first.x(), 
-			points[index].first.y(), 
-			points[index].first.z());
-		const glm::vec3 offset = position - point;
-
-		float s = glm::sin(radian);
-		float c = glm::cos(radian);
-		
-		glm::vec3 rotatedPos;
-		rotatedPos.x = offset.x * c - offset.z * s;
-		rotatedPos.z = offset.x * s + offset.z * c;
-		rotatedPos.y = offset.y;
-
-		rotatedPos += point;
-		//rotatedPos += offset;
-
-		return Point(rotatedPos.x, rotatedPos.y, rotatedPos.z);
-	}
-	
-	//std::vector<Point> points;
-	//std::vector<Point> colors;
-	//std::vector<Vector> normals;
-
-	////TODO:Get RGB image and try to stitch onto model
-
-	//void Reserve(int amount)
-	//{
-	//	points.reserve(amount);
-	//	colors.reserve(amount);
-	//}
-	//
-	//void AddPoint(float x, float y, float z, float r, float g, float b)
-	//{		
-	//	points.emplace_back(x, y, z);
-	//	colors.emplace_back(r, g, b);
-	//}
-
-	////Rotate this vertex around a point
-	//Point RotateAroundPoint(int index, glm::vec3 point, float radian) const
-	//{
-	//	if (radian == 0.0f)
-	//		return points[index];
-
-	//	glm::vec3 position(points[index].x(), points[index].y(), points[index].z());
-	//	const glm::vec3 offset = position - point;
-
-	//	float s = glm::sin(radian);
-	//	float c = glm::cos(radian);
-	//	
-	//	glm::vec3 rotatedPos;
-	//	rotatedPos.x = offset.x * c - offset.z * s;
-	//	rotatedPos.z = offset.x * s + offset.z * c;
-	//	rotatedPos.y = offset.y;
-
-	//	rotatedPos += point;
-	//	//rotatedPos += offset;
-
-	//	return Point(rotatedPos.x, rotatedPos.y, rotatedPos.z);
-	//}
-};
-
 
 class ModelCapture
 {
@@ -163,8 +68,9 @@ class ModelCapture
 	int lastFrameID = -1;
 	int lastIgnoreFrameID = -1;
 
+	//Point map manipulation
 	MeshGenerator meshGenerator;
-
+	std::future<bool> meshGeneratingFuture;
 	
 	//Settings
 	ScanSettings scan_settings_;
@@ -191,6 +97,12 @@ class ModelCapture
 
 	PointModel GenerateCombinedModel();
 
+	template<typename T>
+	static bool is_Ready(std::future<T> const& f)
+	{
+		return f.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+	}
+	
 public:
 
 	ModelCapture(Camera* camera);
