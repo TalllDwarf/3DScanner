@@ -27,10 +27,15 @@ struct ScanSettings
 	int ignoreFrames = 10;
 	int currentIgnoreFrame = 10;
 
+	int displayScanSegment = 1;
+
 	bool cubeSet = true;
 	bool showCube = true;
-	float cubePos[3] = {0.05f, 0.0f, 1.18f};
-	float cubeScale[3] = {0.76f, 0.79f, 0.76f};
+	float cubePos[3] = {0.024f, 0.07f, 1.188f};
+	float cubeScale[3] = {1.10f, 1.01f, 1.1f};
+
+	bool overrideCenter = false;
+	float center[3] = { 0.03f, 0.07f, 1.14f };
 
 	//Used to ignore the background
 	cv::Mat ignoreMask;

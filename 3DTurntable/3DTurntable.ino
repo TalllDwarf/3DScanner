@@ -10,7 +10,7 @@
 #define FULL_REV (STEPS * 7)
 
 LiquidCrystal lcd(8, 7, 5, 4, 3, 2);
-Stepper stepper(STEPS, 9, 11, 10, 12);
+Stepper stepper(STEPS, 12,11,10,9);
 
 int X = 0;
 char line1[16];
@@ -30,7 +30,7 @@ void setup()
 
   pinMode(BUTTON, INPUT);
 
-  stepper.setSpeed(15);
+  stepper.setSpeed(MAX_MOTOR_SPEED);
   
   //setup lcds column and rows
   lcd.begin(16,2);
@@ -69,15 +69,15 @@ void loop()
       case 'S':
       if(singleStep != 0)
       {
+        lcd.setCursor(0,1);
+        sprintf(line1, "Turn:%-4d/%-4d", currentStep, numberOfTurns);
+        lcd.print(line1);
+        
         stepper.setSpeed(MAX_MOTOR_SPEED);
         stepper.step(singleStep);
         StopStepper();
         currentStep++;
         delay(10);
-        lcd.setCursor(0,1);
-        sprintf(line1, "Turn:%-4d/%-4d", currentStep, numberOfTurns);
-        lcd.print(line1);
-
         if(currentStep >= numberOfTurns)
           Serial.write('F');
         else 
@@ -87,7 +87,7 @@ void loop()
 
       case 'r':
       case 'R':
-        currentStep = 0;
+        currentStep = 1;
         lcd.setCursor(0,1);
         sprintf(line1, "Reset       ");
         lcd.print(line1); 

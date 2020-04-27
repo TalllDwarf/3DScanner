@@ -183,10 +183,13 @@ bool Camera::Init()
 	if (sensor) {
 		sensor->get_CoordinateMapper(&mapper);
 
-		sensor->Open();
-		sensor->OpenMultiSourceFrameReader(
+		if(FAILED(sensor->Open()))
+			return false;
+
+		if (FAILED(sensor->OpenMultiSourceFrameReader(
 			FrameSourceTypes_Depth | FrameSourceTypes_Color,
-			&reader);
+			&reader)))
+			return false;
 
 		//Create kinect frame buffer
 		glGenFramebuffers(1, &kinectFrameBuffer);

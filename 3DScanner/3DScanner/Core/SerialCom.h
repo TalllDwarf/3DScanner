@@ -6,8 +6,8 @@
 #include <Winbase.h>
 
 //Windows defines min max breaks CGAL library
-#undef max;
-#undef min;
+#undef max
+#undef min
 
 #define BUFFER_SIZE 255
 #define AUTH_SIZE 3

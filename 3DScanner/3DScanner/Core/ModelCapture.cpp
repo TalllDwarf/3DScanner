@@ -227,14 +227,23 @@ void ModelCapture::RenderToTexture(float angle, float x, float y, float z) const
 	{
 		//					get angle for each image
 		float singleTurn = scan_settings_.singleRotation;
-		const glm::vec3 centerPoint(
-			scan_settings_.cubePos[0],
-			scan_settings_.cubePos[1],
-			scan_settings_.cubePos[2]
-		);
+		glm::vec3 centerPoint;
+
+		if(scan_settings_.overrideCenter)
+		{
+			centerPoint.x = scan_settings_.center[0];
+			centerPoint.y = scan_settings_.center[1];
+			centerPoint.z = scan_settings_.center[2];
+		}
+		else
+		{
+			centerPoint.x = scan_settings_.cubePos[0];
+			centerPoint.y = scan_settings_.cubePos[1];
+			centerPoint.z = scan_settings_.cubePos[2];
+		}
 		
 		//for (const auto& model : currentModel)
-		for(int i = 0; i < currentModel.size(); ++i)
+		for(int i = 0; i < std::min(scan_settings_.displayScanSegment, static_cast<int>(currentModel.size())); ++i)
 		{
 			if (!currentModel.at(i).points.empty())
 			{
@@ -246,7 +255,7 @@ void ModelCapture::RenderToTexture(float angle, float x, float y, float z) const
 				//for(Point v : model.points)
 				for(int v = 0; v < model.points.size(); ++v)
 				{
-					point = model.RotateAroundPoint(v, centerPoint, singleTurn * (currentModel.size() - i - 1));
+					point = model.RotateAroundPoint(v, centerPoint, -singleTurn * i);
 					color = std::get<1>(model.points[v]);
 				
 					//const glm::vec3 rotatedV = 
@@ -375,6 +384,11 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 
 					ImGui::EndCombo();
 				}
+
+				if(ImGui::Button("Recheck Ports"))
+				{
+					serial_com_.SearchForAvailablePorts();
+				}
 				
 				if (ImGui::Button("Connect"))
 				{
@@ -437,6 +451,12 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 						GetCameraFrame();
 						serial_com_.WriteChar('S');
 					}
+
+					if(ImGui::Button("Clear Scan"))
+					{
+						meshGenerator.Clear();
+						currentModel.clear();
+					}
 				}
 
 				if ( ImGui::Button("Disconnect"))
@@ -498,14 +518,19 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 
 				ImGui::Image(reinterpret_cast<void*>(modelTexture), ImVec2(DEPTH_SENSOR_WIDTH, DEPTH_SENSOR_HEIGHT), ImVec2(0, 1), ImVec2(1, 0));
 
-				ImGui::DragFloat("Single Rotation:", &scan_settings_.singleRotation, 0.001f, -6.283f, 6.283f);
+				ImGui::DragInt("Display scan image", &scan_settings_.displayScanSegment, 1, 1, currentModel.size());
 
+				ImGui::Checkbox("Override Center", &scan_settings_.overrideCenter);
+
+				if (scan_settings_.overrideCenter)
+					ImGui::DragFloat3("Rotation Center", &scan_settings_.center[0], 0.001f, -10, 10);
+				
 				ImGui::Separator();
 
 				//TODO:meshGenerator settings
 
 				//If the mesh generator is not running
-				if (!meshGeneratingFuture.valid() || (is_Ready(meshGeneratingFuture) && meshGeneratingFuture.get()))
+				if (!meshGeneratingFuture.valid() || (is_Ready(meshGeneratingFuture)))
 				{
 					meshGenerator.RenderSettings();
 
@@ -513,6 +538,10 @@ void ModelCapture::Render(float angle, float x, float y, float z)
 					{
 						//meshGenerator.Run(std::move(GenerateCombinedModel()));
 						meshGeneratingFuture = std::async(std::launch::async, &MeshGenerator::Run, &meshGenerator, GenerateCombinedModel());
+					}
+					else if (ImGui::Button("Generate Mesh"))
+					{
+						meshGeneratingFuture = std::async(std::launch::async, &MeshGenerator::GenerateMesh, &meshGenerator);
 					}
 					else if (meshGenerator.ModelAvailable())
 					{
@@ -591,6 +620,8 @@ void ModelCapture::ModelGatherTick(float time)
 
 					//Combine point cloud and generate mesh
 				}
+
+				scan_settings_.displayScanSegment = currentModel.size();
 
 				c = serial_com_.GetCharFromBuffer();
 			}
